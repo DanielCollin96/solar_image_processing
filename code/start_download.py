@@ -9,48 +9,97 @@ from copy import copy
 import time
 import skimage
 import matplotlib.pyplot as plt
-import sunpy.map
-from sunpy.map import contains_full_disk
-from utils import read_file_name
+from utils import read_file_name, check_file_quality, find_missing_preprocessed_dates
+
+class SolarImageDownloader:
+    def __init__(self):
+        pass
+
+    def download_images(self):
+        pass
 
 
-def check_file_quality(files, path_to_downloaded):
-    existing_dates = []
-    bad_dates = []
+def download_images_hourly_cadence(start_date,path_to_downloaded,client_email,series,wavelength,segment,rebin):
+    while start_date < datetime.today():
+        start_time = time.time()
+        print('Requesting images for',start_date)
+        end_date = start_date + timedelta(hours=24) #relativedelta(months=1)
+        year = str(start_date.year)
+        month = str(start_date.month)
+        if len(month) == 1:
+            month = '0' + month
 
-    for file in files:
-        if file[-5:] == '.fits':
-            file_date, product, channel = read_file_name(file)
+        path_year = path_to_downloaded + year
+        if not os.path.isdir(path_year):
+            os.mkdir(path_year)
+        path_month = path_year + '/' + month
+        if not os.path.isdir(path_month):
+            os.mkdir(path_month)
+        path_month = path_month + '/'
 
-            fits_file = path_to_downloaded + file
 
-            # check if images can be read and preprocessed
-            try:
-                #print('Reading', fits_file)
-                aia_map = sunpy.map.Map(fits_file)
-                reading_success = True
-            except:
-                print('Fits file could not be read.', product, channel, file_date)
-                reading_success = False
+        client = jd.client(client_email)
+        rs = client.create_request_string(series,
+                                          start_date,
+                                          endtime=end_date,
+                                          wavelength=wavelength,
+                                          segment=segment,
+                                          period='',
+                                          cadence=timedelta(hours=1))
+        search_results = client.search(rs, keys = ['t_obs','**ALL**'])
+        print(search_results)
+        print('Request successful. Start downloading.')
+        #
+        pickle.dump(search_results,open(path_month + 'meta_data_{}.pickle'.format(start_date.strftime('%Y%m%d')),'wb'))
 
-            if reading_success:
-                full_disk = True
-                if not contains_full_disk(aia_map):
-                    print('Map does not contain full disk.', product, channel, file_date)
-                    full_disk = False
+        try:
+            files_downloaded = client.download(rs,path_month,
+                                               method='url-tar',
+                                               protocol='fits',
+                                               filter=None,
+                                               rebin=rebin,
+                                               process={})
+            print('Files downloaded successfully.')
+            print("--- %s seconds ---" % (time.time() - start_time))
+        except:
+            print('File download error for', start_date, '. Try again with hourly files.')
+            start_hour = copy(start_date)
+            for i in range(24):
 
-                bad_quality = False
-                if not aia_map.meta['QUALITY'] == 0:
-                    print('Map has bad quality.', product, channel, file_date)
-                    bad_quality = True
+                print('Requesting single hour:', start_hour)
+                end_hour = start_hour + timedelta(hours=1)
+                client = jd.client(client_email)
+                rs = client.create_request_string(series,
+                                                  start_hour,
+                                                  endtime=end_hour,
+                                                  wavelength=wavelength,
+                                                  segment=segment,
+                                                  period='',
+                                                  cadence=timedelta(hours=1))
+                search_results = client.search(rs, keys=['t_obs', '**ALL**'])
+                print(search_results)
+                print('Request for single hour successful. Start downloading.')
+                #
+                pickle.dump(search_results,
+                            open(path_month + 'meta_data_{}.pickle'.format(start_date.strftime('%Y%m%d%H')), 'wb'))
+                try:
+                    files_downloaded = client.download(rs, path_month,
+                                                       method='url-tar',
+                                                       protocol='fits',
+                                                       filter=None,
+                                                       rebin=rebin,
+                                                       process={})
+                    print('Single file downloaded successfully.')
+                    print("--- %s seconds ---" % (time.time() - start_time))
+                except:
+                    print('Single file download error for',start_hour,'. Skipping that file.')
+                start_hour = start_hour + timedelta(hours=1)
 
-                if full_disk and not bad_quality:
-                    existing_dates.append(file_date)
-                else:
-                    bad_dates.append(file_date)
-            else:
-                bad_dates.append(file_date)
-    return existing_dates, bad_dates
+        #print(files_downloaded)
+        start_date = copy(end_date)
+
+
+    return
 
 
 def download_adjacent_images(date, path_downloaded_month, interval, client, series, wavelength, segment):
@@ -135,8 +184,10 @@ def check_for_missing_images(month,path_to_downloaded,path_to_preprocessed,clien
 
     missing_downloaded_data = target_data.difference(existing_downloaded_hourly_dates)
 
-    missing_preprocessed_dates = pickle.load(open(path_to_preprocessed + month.strftime('%Y/%m') + '/bad_quality_dates.pickle','rb'))
-    missing_preprocessed_dates = pd.Index(missing_preprocessed_dates).round('60min').to_pydatetime()
+    missing_preprocessed_dates, _ = find_missing_preprocessed_dates(month, path_to_preprocessed + month.strftime('%Y/%m'), wavelength)
+
+    #missing_preprocessed_dates = pickle.load(open(path_to_preprocessed + month.strftime('%Y/%m') + '/bad_quality_dates.pickle','rb'))
+    #missing_preprocessed_dates = pd.Index(missing_preprocessed_dates).round('60min').to_pydatetime()
 
     missing_dates = missing_downloaded_data.union(missing_preprocessed_dates)
     print(missing_dates)
@@ -221,23 +272,34 @@ def collect_substitute_dates(path_to_downloaded):
     print(substitute_dates)
     return substitute_dates
 
+def download_missing_preprocessed_images(start_date,path_to_downloaded, path_to_preprocessed,client,series, wavelength, segment):
+    while start_date < datetime.today():
+        month = datetime(start_date.year,start_date.month,1,0)
+        check_for_missing_images(month, path_to_downloaded, path_to_preprocessed,client,series, wavelength, segment)
+        start_date = start_date + relativedelta(months=1)
+    return
+
 
 
 dir_path = os.path.dirname(os.getcwd())
 
 
-start_date = datetime(2016,3,1)
+start_date = datetime(2019,1,1)
 run_on_server = True
-channel = 'hmi'
+channel = 'aia_171'
+rebin = 4 # for 1024x1024 images # 16  for 256x256 images
 
-if channel == 'aia_193':
-    # last start from 2018
+if channel == 'aia_171':
+    client = 'daniel.collin@web.de' #'daniel.collin@web.de' 2019 #'d.collin@tu-berlin.de'2022 #'collin@gfz-potsdam.de' 2013 #'collin@gfz.de' 2010/08 # 'daniel.collin@gfz.de' 2016
+    series = 'AIA.lev1_euv_12s' #'hmi.M_720s'
+    segment =  'image' # 'magnetogram'
+    wavelength = 171 # ''
+elif channel == 'aia_193':
     client = 'daniel.collin@web.de'#'d.collin@tu-berlin.de' mp2 2018 #'collin@gfz-potsdam.de' mp3 2014 #'collin@gfz.de' mp3 2016 #'daniel.collin@web.de' mp2 2022/06
     series = 'AIA.lev1_euv_12s' #'hmi.M_720s'
     segment =  'image' # 'magnetogram'
     wavelength = 193 # ''
 elif channel == 'aia_211':
-    # last start from 2023
     client = 'daniel.collin@web.de'#'collin@gfz.de'
     series = 'AIA.lev1_euv_12s' #'hmi.M_720s'
     segment = 'image' # 'magnetogram'
@@ -248,7 +310,6 @@ elif channel == 'hmi':
     segment = 'magnetogram'  # 'image' # 'magnetogram'
     wavelength = ''  # 193 # ''
 
-rebin = 4 # for 1024x1024 images # 16  for 256x256 images
 if run_on_server:
     if series[0:3] == 'AIA':
         path_to_downloaded =  dir_path + '/data/SDO/AIA/{}/'.format(wavelength) #'SDO/HMI/magnetogram/'
@@ -270,57 +331,13 @@ if not os.path.isdir(path_to_downloaded):
 if not os.path.isdir(path_to_preprocessed):
     os.mkdir(path_to_preprocessed)
 
-#download_adjacent_images(datetime(2015,6,1), path_to_downloaded, 48, client, series, wavelength, segment)
-#exit()
+download_missing_preprocessed_images(start_date,path_to_downloaded, path_to_preprocessed,client,series, wavelength, segment)
+#download_images_hourly_cadence(start_date,path_to_downloaded,client,series,wavelength,segment,rebin)
 #collect_substitute_dates(path_to_downloaded)
 #exit()
-while start_date < datetime.today():
-    month = datetime(start_date.year,start_date.month,1,0)
-    check_for_missing_images(month, path_to_downloaded, path_to_preprocessed,client,series, wavelength, segment)
-    start_date = start_date + relativedelta(months=1)
-exit()
 
 
-while start_date < datetime.today():
-    start_time = time.time()
 
-    end_date = start_date + timedelta(hours=24) #relativedelta(months=1)
-    year = str(start_date.year)
-    month = str(start_date.month)
-    if len(month) == 1:
-        month = '0' + month
-
-    path_year = path_to_downloaded + year
-    if not os.path.isdir(path_year):
-        os.mkdir(path_year)
-    path_month = path_year + '/' + month
-    if not os.path.isdir(path_month):
-        os.mkdir(path_month)
-    path_month = path_month + '/'
-
-
-    client = jd.client(client)
-    rs = client.create_request_string(series,
-                                      start_date,
-                                      endtime=end_date,
-                                      wavelength=wavelength,
-                                      segment=segment,
-                                      period='',
-                                      cadence=timedelta(hours=1))
-    search_results = client.search(rs, keys = ['t_obs','**ALL**'])
-    print(search_results)
-    pickle.dump(search_results,open(path_month + 'meta_data_{}.pickle'.format(start_date.strftime('%Y%m%d')),'wb'))
-
-    files_downloaded = client.download(rs,path_month,
-                                       method='url-tar',
-                                       protocol='fits',
-                                       filter=None,
-                                       rebin=rebin,
-                                       process={})
-
-    print(files_downloaded)
-    start_date = copy(end_date)
-    print("--- %s seconds ---" % (time.time() - start_time))
 
 
 
