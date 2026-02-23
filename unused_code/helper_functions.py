@@ -7,14 +7,16 @@ import pandas as pd
 import numpy as np
 import pickle
 import aiapy
-from aiapy.calibrate import register, update_pointing, correct_degradation
-from aiapy.calibrate.util import get_correction_table
+from aiapy.calibrate import register
+from aiapy.calibrate.utils import get_correction_table
 from astropy.time import Time
 import astropy.units as u
-from rebin_psf import rebin_psf
-from deconvolve_image import deconvolve_bid
+from solar_image_processing.psf_deconvolution.rebin_psf import rebin_psf
 from joblib import Parallel, delayed, cpu_count
 from copy import copy
+from pathlib import Path
+from aiapy.psf import calculate_psf
+
 
 def create_folders_for_preprocessed_images(start,end,path_to_preprocessed):
     # create folders
@@ -147,15 +149,14 @@ def load_config_data(path_to_config,wl,month=None):
             psf = pickle.load(open(path_to_config / 'psf_{}.pickle'.format(wl), 'rb'))
             # print('Found saved PSF.')
         except:
-            use_gpu = True
-            print('Did not find saved PSF. Computing it from scratch. This may take a while. GPU usage is strongly recommended.')
-            if use_gpu:
-                print('GPU usage is currently enabled.')
-                print('If this generates an error or there is no GPU support available, consider disabling GPU usage in the script or computing the PSF on a different device with GPU support and copying it into the configuration_data folder. ')
-            else:
-                print('GPU usage is currently disabled. This might be very slow. Consider enabling GPU usage in the script.')
-
-            psf = aiapy.psf.psf(int(wl) * u.angstrom, use_gpu=use_gpu)
+            #use_gpu = True
+            #print('Did not find saved PSF. Computing it from scratch. This may take a while. GPU usage is strongly recommended.')
+            #if use_gpu:
+            #    print('GPU usage is currently enabled.')
+            #    print('If this generates an error or there is no GPU support available, consider disabling GPU usage in the script or computing the PSF on a different device with GPU support and copying it into the instrument_data folder. ')
+            #else:
+            #    print('GPU usage is currently disabled. This might be very slow. Consider enabling GPU usage in the script.')
+            psf = calculate_psf(int(wl) * u.angstrom)#, use_gpu=use_gpu)
             pickle.dump(psf, open(path_to_config / 'psf_{}.pickle'.format(wl), 'wb'))
 
         # print('Not found saved rebinned PSF. Compute it from from original PSF.')
@@ -183,7 +184,7 @@ def load_config_data(path_to_config,wl,month=None):
             print('Did not find saved pointing table. Downloading it.')
             # print(Time(current_month-timedelta(days=1)),Time(current_month+timedelta(days=32)))
             time_range = (Time(month - timedelta(days=1)), Time(month + timedelta(days=32)))
-            pointing_table = aiapy.calibrate.util.get_pointing_table("JSOC", time_range=time_range)
+            pointing_table = aiapy.calibrate.utils.get_pointing_table("JSOC", time_range=time_range)
             pickle.dump(pointing_table,
                         open(path_to_config / 'pointing_table_{}.pickle'.format(month.strftime('%Y%m')), 'wb'))
     else:
@@ -308,7 +309,7 @@ def check_completeness_of_preprocessed_images(files_to_exclude,current_month, pa
 
 def parallel_find_files_to_preprocess(missing_date,existing_raw_files, path_to_raw_files):
 
-    print('Checking',missing_date)
+    #print('Checking',missing_date)
 
     bad_raw_candidates = False
     missing_raw_map = False
@@ -370,14 +371,48 @@ def find_files_to_preprocess(missing_preprocessed_dates, existing_raw_files, pat
     res = np.array(res)
     res = pd.DataFrame(res[:,1:],index=res[:,0],columns=['file_name','bad','missing_raw'])#,dtype=[str,bool,bool])
 
-    print('Files to preprocess:')
+    #print('Files to preprocess:')
     files_to_preprocess = res.loc[:,'file_name']#.dropna()
     nan_mask = pd.isna(files_to_preprocess).values
     files_to_preprocess = pd.Series(files_to_preprocess.index[np.invert(nan_mask)],index=files_to_preprocess.values[np.invert(nan_mask)])
-    print(files_to_preprocess)
+    #print(files_to_preprocess)
 
-    print('Dates that cannot be preprocessed:')
+    #print('Dates that cannot be preprocessed:')
     files_to_exclude = res.loc[nan_mask,['bad','missing_raw']]
-    print(files_to_exclude)
+    #print(files_to_exclude)
 
     return files_to_preprocess, files_to_exclude
+
+
+
+def _save_preprocessed_output(
+    path_output: Path,
+    channel: str,
+    target_date: datetime,
+    image: np.ndarray,
+    metadata: dict
+) -> None:
+    """
+    Save preprocessed image and metadata to disk.
+
+    Parameters
+    ----------
+    path_output : Path
+        Output directory.
+    channel : str
+        Channel identifier for filename.
+    target_date : datetime
+        Target date for filename.
+    image : np.ndarray
+        Preprocessed image data.
+    metadata : dict
+        Image metadata.
+    """
+    date_str = target_date.strftime('%Y-%m-%d_%H:%M')
+    base_name = f'{channel}_{date_str}'
+
+    np.save(path_output / f'{base_name}.npy', image)
+    with open(path_output / f'{base_name}_meta.pickle', 'wb') as f:
+        pickle.dump(metadata, f)
+
+    print(f'Saved {base_name}.npy')

@@ -1,0 +1,82 @@
+# =============================================================================
+# Solar Image Processing Pipeline Configuration
+# =============================================================================
+
+# Base directory (project root)
+# Set to null to auto-detect as the parent of this config file's directory
+base_dir: null
+
+# Data Paths (relative to base_dir)
+paths:
+  # Directory where unprocessed solar image files are stored after download.
+  unprocessed: data/unprocessed_images/SDO
+  # Root directory for preprocessed image files
+  preprocessed: data/preprocessed_images/deep_learning
+  # Root directory for cropped image files
+  cropped: data/preprocessed_images/sws_prediction
+  # Directory containing AIA instrument calibration data:
+  instrument_data: data/instrument_data
+
+# Date range
+start_date: "2010-05-01 00:00:00"
+end_date:   "2024-06-30 23:00:00"
+
+# List of channels
+# Options: 'aia_171', 'aia_193', 'aia_211', 'hmi'
+channels:
+  - aia_171
+  - aia_193
+  - aia_211
+  - hmi
+
+# Options for downloading
+download:
+  # Factor by which the JSOC server rebins images before they are downloaded.
+  #   rebin_factor: 1   -> full resolution, 4096x4096 pixels
+  #   rebin_factor: 4   -> 1024x1024 pixels
+  rebin_factor: 4
+  # Email address registered with JSOC for submitting data requests.
+  # Register at: http://jsoc.stanford.edu/ajax/exportdata.html
+  email: collin@gfz.de
+  # JSOC data series identifiers for each instrument.
+  # These are standard JSOC series names that rarely need to be changed.
+  jsoc_series:
+    aia:
+      # Level 1 AIA EUV images at 12-second nominal cadence.
+      series: AIA.lev1_euv_12s
+      # JSOC data segment type for AIA images.
+      segment: image
+    hmi:
+      # HMI line-of-sight magnetograms at 720-second (12-minute) cadence.
+      series: hmi.M_720s
+      # JSOC data segment type for HMI magnetograms.
+      segment: magnetogram
+
+# Options for preprocessing
+preprocessing:
+  # Whether to use a CUDA-capable GPU for AIA PSF deconvolution.
+  use_gpu: false
+  # Whether to apply differential rotation to fill data gaps.
+  # If set to false and the time gap between available and target image exceeds
+  # 6 minutes, preprocessing will raise an error for that image.
+  differential_rotation: true
+  # Target solar disk radius in arcseconds used for disk-size normalisation.
+  target_rsun_arcsec: 976.0
+  # Whether to load and skip previously failed files.
+  load_preprocessing_fails: false
+  # Whether to preprocess existing files.
+  overwrite_existing: false
+
+# Options for cropping
+cropping:
+  # Pixel resolution to downsample images to before cropping.
+  downsample_resolution: 512
+  # Cropping mode applied after downsampling. Options:
+  #   'square' -- cut a fixed-size square from the image centre.
+  #   'disk'   -- crop to the solar disk boundary; requires image metadata
+  crop_mode: square
+  # Size (pixels) of the square crop window.
+  crop_pixels: 300
+  # Final pixel size to resize the cropped image to using bicubic interpolation.
+  # Set to null to skip resizing and keep the crop at crop_pixels x crop_pixels.
+  resize_cropped: 224

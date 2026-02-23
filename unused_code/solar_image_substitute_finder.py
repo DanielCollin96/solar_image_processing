@@ -39,8 +39,8 @@ import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
-import jsoc_download as jd
-from utils import check_file_quality, find_missing_preprocessed_dates, read_file_name
+from solar_image_processing.downloading import jsoc_download as jd
+from solar_image_processing.utils import check_file_quality, find_missing_preprocessed_dates, read_file_name
 
 # import donwload configuration from solar_image_downloader
 @dataclass
