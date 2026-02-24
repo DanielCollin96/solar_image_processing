@@ -21,7 +21,7 @@ from solar_image_processing.utils.helper_functions import (
 
 class SolarImagePreprocessor:
     """
-    Orchestrator for preprocessing SDO solar images.
+    Class for managing the preprocessing of SDO solar images.
 
     Manages the full preprocessing workflow: creating output directories,
     identifying missing preprocessed dates, running parallel preprocessing,
