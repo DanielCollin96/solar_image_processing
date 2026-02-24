@@ -10,7 +10,7 @@ from sunpy.map import contains_full_disk
 
 from solar_image_processing.utils.helper_functions import (
     read_file_name,
-    _save_preprocessed_output,
+    save_preprocessed_output,
 )
 from solar_image_processing.preprocessing.preprocessing_functions import (
     register_image,
@@ -107,7 +107,7 @@ class HMIPreprocessor:
                 preprocessed_image, meta_info = self.preprocess(
                     hmi_map, date, target_date
                 )
-                _save_preprocessed_output(
+                save_preprocessed_output(
                     path_output, 'hmi', target_date, preprocessed_image, meta_info
                 )
             except Exception:

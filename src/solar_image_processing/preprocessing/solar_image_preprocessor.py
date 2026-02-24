@@ -13,7 +13,7 @@ from solar_image_processing.utils.pipeline_config import PipelineConfig
 from solar_image_processing.utils.helper_functions import (
     find_missing_preprocessed_dates,
     load_existing_raw_files,
-    load_config_data,
+    load_calibration_data,
     find_files_to_preprocess,
     check_completeness_of_preprocessed_images,
 )
@@ -240,7 +240,7 @@ class SolarImagePreprocessor:
             )
         elif channel[:3] == 'aia':
             # PSF, degradation correction, and pointing tables are month-specific
-            psf, correction_table, pointing_table = load_config_data(
+            psf, correction_table, pointing_table = load_calibration_data(
                 self.paths['instrument_data'], channel[-3:], month
             )
             preprocessor = AIAPreprocessor(pointing_table, psf, correction_table, self.config)

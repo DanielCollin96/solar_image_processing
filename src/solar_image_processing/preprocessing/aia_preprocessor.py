@@ -13,7 +13,7 @@ from aiapy.calibrate import update_pointing, correct_degradation
 from solar_image_processing.psf_deconvolution.deconvolve_image import deconvolve_bid
 from solar_image_processing.utils.helper_functions import (
     read_file_name,
-    _save_preprocessed_output,
+    save_preprocessed_output,
 )
 from solar_image_processing.preprocessing.preprocessing_functions import (
     register_image,
@@ -121,7 +121,7 @@ class AIAPreprocessor:
                 preprocessed_image, meta_info = self.preprocess(
                     aia_map, date, target_date
                 )
-                _save_preprocessed_output(
+                save_preprocessed_output(
                     path_output, channel, target_date, preprocessed_image, meta_info
                 )
             except Exception:

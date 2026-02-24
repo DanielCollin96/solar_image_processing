@@ -219,7 +219,7 @@ def load_existing_raw_files(path_to_raw_files: Path) -> pd.Series:
     )
 
 
-def load_config_data(
+def load_calibration_data(
     path_to_config: Path,
     wl: str,
     month: Optional[datetime] = None,
@@ -302,7 +302,7 @@ def load_config_data(
     return psf_rebinned, correction_table, pointing_table
 
 
-def _check_file_quality(
+def check_file_quality(
     files: List[str],
     path_to_downloaded: Path,
 ) -> Tuple[List[datetime], List[datetime]]:
@@ -487,7 +487,7 @@ def check_completeness_of_preprocessed_images(
     return all_successfully_preprocessed, dates_to_check
 
 
-def _find_substitute_file(
+def find_substitute_file(
     missing_date: datetime,
     existing_raw_files: pd.Series,
     path_to_raw_files: Path,
@@ -533,7 +533,7 @@ def _find_substitute_file(
         sort_index = np.argsort(time_difference)
         files_to_check = files_to_check.iloc[sort_index]
 
-        good_dates, _ = _check_file_quality(list(files_to_check), path_to_raw_files)
+        good_dates, _ = check_file_quality(list(files_to_check), path_to_raw_files)
 
         if len(good_dates) > 0:
             # Select the temporally closest good candidate
@@ -582,7 +582,7 @@ def find_files_to_preprocess(
     print(f'Number of available CPUs: {n_cpus}')
 
     results = Parallel(n_jobs=n_cpus // 2)(
-        delayed(_find_substitute_file)(date, existing_raw_files, path_to_raw_files)
+        delayed(find_substitute_file)(date, existing_raw_files, path_to_raw_files)
         for date in missing_preprocessed_dates
     )
 
@@ -607,7 +607,7 @@ def find_files_to_preprocess(
 
     return files_to_preprocess, files_to_exclude
 
-def _save_preprocessed_output(
+def save_preprocessed_output(
     path_output: Path,
     channel: str,
     target_date: datetime,
