@@ -8,9 +8,8 @@ def main() -> None:
     """
     Crop preprocessed SDO solar images according to the pipeline configuration.
 
-    Reads all settings from ``configs/pipeline_config.yaml``, then runs
-    :class:`~solar_image_processing.cropping.solar_image_cropper.ImageCropper`
-    for all configured channels over the configured date range.
+    Reads all settings from ``configs/pipeline_config.yaml``, then runs the
+    image cropper for all configured channels over the configured date range.
 
     Notes
     -----
