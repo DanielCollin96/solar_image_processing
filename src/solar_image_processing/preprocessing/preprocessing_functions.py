@@ -49,7 +49,7 @@ def scale_solar_disk_radius(
     missing: Optional[float] = None,
 ) -> sunpy.map.Map:
     """
-    Rescale a map so the solar disk radius matches ``rsun_target``.
+    Rescale a solar image map so the solar disk radius matches ``rsun_target``.
 
     Normalising all images to the same apparent disk size removes the
     effect of varying Earth–Sun distance throughout the year.
