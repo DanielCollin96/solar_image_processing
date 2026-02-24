@@ -9,8 +9,7 @@ def main() -> None:
     Preprocess SDO solar images according to the pipeline configuration.
 
     Reads all settings from ``configs/pipeline_config.yaml``, then runs
-    :class:`~solar_image_processing.preprocessing.solar_image_preprocessor.SolarImagePreprocessor`
-    for all configured channels over the configured date range.
+    the preprocessor for all configured channels over the configured date range.
 
     Notes
     -----
