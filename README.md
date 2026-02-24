@@ -4,14 +4,40 @@ A Python software for downloading and preprocessing SDO (Solar Dynamics Observat
 solar images for scientific analysis and machine learning applications in space weather
 forecasting.
 
+## Journal Publication and Citation
+
+This processing pipeline was developed to create the [dataset](https://doi.org/tbd) for the model and research study [Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://doi.org/tbd) published in *TBD* (2026). If you use this software or the data in your research, please cite it as follows:
+
+**ASK STEFAN IF/HOW TO CITE HIS PSF PAPER AND JSOC SCRIPT!**
+
+```bibtex
+@article{Collin2026journal,
+  title   = {TBD},
+  author = {Collin, Daniel and Shprits, Yuri and  Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
+  journal = {TBD},
+  year    = {2026},
+  doi     = {TBD}
+}
+
+@misc{Collin2026dataset,
+  title = {TBD},
+  author = {Collin, Daniel and Shprits, Yuri and  Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
+  publisher = {GFZ Data Services},
+  year = {2026},
+  howpublished = {Data Set},
+  doi = {10.5880/GFZ.2.7.2026.XXX}
+}
+```
+[Journal Publication](https://doi.org/tbd) | [Data Publication](https://doi.org/tbd) 
+
 ## Overview
 
 This package provides a three-stage pipeline:
 
 | Stage | Script | What it does |
 |---|---|---|
-| **Download** | `scripts/download_solar_images.py` | Fetch raw FITS files from JSOC at hourly cadence |
-| **Preprocess** | `scripts/preprocess_solar_images.py` | Calibrate, register, and normalise raw images |
+| **Download** | `scripts/download_solar_images.py` | Download raw FITS files from JSOC at hourly cadence |
+| **Preprocess** | `scripts/preprocess_solar_images.py` | Apply instrument- and data related corrections |
 | **Crop** | `scripts/crop_solar_images.py` | Downsample, crop, and optionally resize preprocessed images |
 
 Supported instruments:
@@ -29,12 +55,12 @@ solar_images/
 ├── pyproject.toml              # Package metadata and dependencies
 ├── uv.lock                     # Locked dependency versions
 ├── configs/
-│   └── pipeline_config.yaml   # All pipeline parameters (edit this)
-├── scripts/
+│   └── pipeline_config.yaml    # All hyperparameters (edit this)
+├── scripts/                    # Executable scripts
 │   ├── download_solar_images.py
 │   ├── preprocess_solar_images.py
 │   └── crop_solar_images.py
-├── src/
+├── src/                        # Source code
 │   └── solar_image_processing/
 │       ├── cropping/
 │       │   └── solar_image_cropper.py
@@ -53,8 +79,9 @@ solar_images/
 │           ├── helper_functions.py
 │           └── pipeline_config.py
 ├── tests/
-│   └── test_pipeline.py
-└── data/                       # Created during pipeline execution
+│   ├── data/                   # Data for testing (see below)
+│   └── test_pipeline.py        # Test script
+└── data/                       # Created during script execution
     ├── unprocessed_images/
     ├── preprocessed_images/
     └── instrument_data/
@@ -111,11 +138,6 @@ source .venv/bin/activate
 After activation, `python` resolves to the project's interpreter and all
 dependencies are available. Deactivate with `deactivate`.
 
-> **Tip — run without activating:** prefix any command with `uv run` and uv
-> will automatically use the project's virtual environment:
-> ```bash
-> uv run python scripts/download_solar_images.py
-> ```
 
 ### 4. Register with JSOC
 
@@ -130,7 +152,7 @@ Downloading data requires a JSOC-registered email address:
 
 ## Configuration
 
-All pipeline parameters are controlled by a single YAML file:
+All hyperparameters are controlled by a single YAML file:
 
 ```
 configs/pipeline_config.yaml
@@ -143,10 +165,10 @@ inline in the file. Key sections are:
 
 ```yaml
 paths:
-  unprocessed:    data/unprocessed_images/SDO       # raw FITS files
-  preprocessed:   data/preprocessed_images/deep_learning
-  cropped:        data/preprocessed_images/sws_prediction
-  instrument_data: data/instrument_data              # PSF / calibration cache
+  unprocessed:    data/unprocessed_images/SDO               # raw FITS files
+  preprocessed:   data/preprocessed_images/deep_learning    # preprocessed files ready for deep learning
+  cropped:        data/preprocessed_images/sws_prediction   # further downsampled and cropped files for certain applications
+  instrument_data: data/instrument_data                     # instument-related data for preprocessing
 ```
 
 All paths are relative to the project root (or to `base_dir` if set).
@@ -159,7 +181,7 @@ start_date: "2010-05-01 00:00:00"
 end_date:   "2024-06-30 23:00:00"
 ```
 
-Supported formats: `"YYYY-MM-DD"` or `"YYYY-MM-DD HH:MM:SS"`.
+Put here the time range you want to download or process. Supported formats: `"YYYY-MM-DD"` or `"YYYY-MM-DD HH:MM:SS"`.
 
 ### Channels
 
@@ -171,24 +193,24 @@ channels:
   - hmi
 ```
 
-Remove channels you do not need.
+Put here the channels you want to download or process. Remove channels you do not need.
 
 ### Download options
 
 ```yaml
 download:
-  rebin_factor: 4       # 1 = 4096×4096 px, 4 = 1024×1024 px
-  email: your@email.com
+  rebin_factor: 4       # downsampling factor before downloading (1 = 4096×4096 px, 4 = 1024×1024 px)
+  email: your@email.com # email for JSOC download
 ```
 
 ### Preprocessing options
 
 ```yaml
 preprocessing:
-  use_gpu: false              # true requires a CUDA 12 GPU + cupy
-  differential_rotation: true # rotate substitute images to target time
-  target_rsun_arcsec: 976.0  # normalise all disks to this radius
-  overwrite_existing: false   # reprocess files that already exist
+  use_gpu: false                   # true requires a CUDA 12 GPU + cupy
+  differential_rotation: true      # rotate substitute images to target time
+  target_rsun_arcsec: 976.0        # normalise all disks to this radius
+  overwrite_existing: false        # reprocess files that already exist
   load_preprocessing_fails: false  # skip dates that failed previously
 ```
 
@@ -197,8 +219,8 @@ preprocessing:
 ```yaml
 cropping:
   downsample_resolution: 512  # downsample to this size before cropping
-  crop_mode: square           # 'square' or 'disk'
-  crop_pixels: 300            # square half-width (square mode only)
+  crop_mode: square           # 'square' or 'disk' (either crop a square of certain pixels or crop at solar disk boundaries)
+  crop_pixels: 300            # pixel length of square crop
   resize_cropped: 224         # final size; null = no resize
 ```
 
@@ -222,7 +244,7 @@ python download_solar_images.py
 
 Downloads images at hourly cadence for all channels listed in `channels` over
 the configured date range. For each day, a single batch request is attempted
-first; individual hourly requests are used as fallback if the batch fails.
+first; individual hourly requests are used as a fallback if the batch fails.
 
 **Output:** raw FITS files and per-request metadata pickles saved to:
 ```
@@ -315,7 +337,7 @@ Without a GPU, deconvolution runs on the CPU and is significantly slower.
 
 The integration test runs the full pipeline against a small reference dataset
 stored in `tests/data/reference/` and compares results to stored reference
-outputs. The download stage is skipped by default (requires JSOC access).
+outputs. Reference data can be downloaded here **(insert test data download link)**.
 
 ```bash
 cd tests
@@ -324,26 +346,23 @@ pytest test_pipeline.py -v
 
 ---
 
-## Dependencies
+## Code developer
 
-Managed by `uv` via `pyproject.toml` (Python >= 3.10, < 3.13):
+[Daniel Collin](https://www.linkedin.com/in/daniel-collin-52abb0205/). 
 
-| Package | Purpose |
-|---|---|
-| `sunpy` | Solar physics data, FITS map handling |
-| `aiapy` | AIA-specific pointing, PSF, and degradation correction |
-| `astropy` | Coordinates, WCS, units, FITS I/O |
-| `numpy` / `pandas` | Array and tabular data |
-| `scikit-image` | Block reduction and image resizing |
-| `joblib` | Parallel processing |
-| `drms` | JSOC data request client |
-| `pyyaml` | Configuration file parsing |
-| `cupy-cuda12x` | GPU acceleration (requires CUDA 12) |
+In case of questions or bugs, please contact Daniel at collin@gfz.de.
+
+---
+
+## License
+
+This work is released under [MIT License](https://github.com/DanielCollin96/INSERT_LATER).
 
 ---
 
 ## References
 
+- Publication (please cite): **Insert when submitted**
 - SDO Mission: <https://sdo.gsfc.nasa.gov/>
 - JSOC Data Center: <http://jsoc.stanford.edu/>
 - SunPy: <https://sunpy.org/>
