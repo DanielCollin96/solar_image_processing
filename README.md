@@ -1,6 +1,6 @@
-# Solar Image Processing Pipeline
+# Solar Image Processing
 
-A Python package for downloading and preprocessing SDO (Solar Dynamics Observatory)
+A Python software for downloading and preprocessing SDO (Solar Dynamics Observatory)
 solar images for scientific analysis and machine learning applications in space weather
 forecasting.
 
