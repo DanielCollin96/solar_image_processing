@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Tuple
 
 import astropy.units as u
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import sunpy.map
@@ -128,6 +129,7 @@ class AIAPreprocessor:
                 print(f'Failed to compute {product} {channel} {target_date}')
                 return
 
+
     def preprocess(
         self,
         aia_map: sunpy.map.Map,
@@ -162,11 +164,12 @@ class AIAPreprocessor:
         aia_map = aia_map.resample([1024, 1024] * u.pixel)
 
         aia_map = self._deconvolve(aia_map)
-        aia_map = register_image(aia_map)
+        aia_map = register_image(aia_map,scaling=False)
         aia_map = scale_solar_disk_radius(
             aia_map,
             rsun_target=self.config['target_rsun_arcsec'],
         )
+
         aia_map = correct_degradation(
             aia_map,
             correction_table=self.correction_table,
@@ -179,6 +182,7 @@ class AIAPreprocessor:
         img_final = np.flipud(img_normalized.value)
 
         return img_final, aia_map.meta
+
 
     def _apply_differential_rotation(
         self,
