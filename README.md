@@ -29,7 +29,7 @@ This processing pipeline was developed to create the [dataset](https://doi.org/t
 ```
 [Journal Publication](https://doi.org/tbd) | [Data Publication](https://doi.org/tbd) 
 
-The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.7910/DVN/DYT4ZL),[[2]](https://doi.org/10.3847/1538-4365/adbaed)[[3]](https://doi.org/10.1007/s11207-024-02321-y)).
+The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.3847/1538-4365/adbaed), [[2]](https://doi.org/10.7910/DVN/DYT4ZL), [[3]](https://doi.org/10.1007/s11207-024-02321-y)) listed below in the References section.
 
 ## Overview
 
@@ -364,8 +364,8 @@ This work is released under [MIT License](https://github.com/DanielCollin96/INSE
 ## References
 
 - Publication (please cite): **Insert when submitted**
-- Point-spread functions: [Hofmeister (2024). Dataset](https://doi.org/10.7910/DVN/DYT4ZL); [Hofmeister et al., (2025). ApJS, 278(1), 8](https://doi.org/10.3847/1538-4365/adbaed)
-- Deconvolution: [Hofmeister (2024). Sol Phys 299, 77](https://doi.org/10.1007/s11207-024-02321-y)
+- Point-spread functions: [1] [Hofmeister et al., (2025). ApJS, 278(1), 8](https://doi.org/10.3847/1538-4365/adbaed); [2] Dataset: [Hofmeister (2024)](https://doi.org/10.7910/DVN/DYT4ZL); 
+- Deconvolution: [3] [Hofmeister (2024). Sol Phys 299, 77](https://doi.org/10.1007/s11207-024-02321-y)
 - SDO Mission: <https://sdo.gsfc.nasa.gov/>
 - JSOC Data Center: <http://jsoc.stanford.edu/>
 - SunPy: <https://sunpy.org/>
