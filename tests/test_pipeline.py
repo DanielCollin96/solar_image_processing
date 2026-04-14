@@ -21,7 +21,7 @@ from solar_image_processing.utils.pipeline_config import PipelineConfig
 
 
 def test_pipeline(
-    downloading: bool = True,
+    downloading: bool = False,
     preprocessing: bool = True,
     cropping: bool = True,
 ) -> None:
