@@ -8,7 +8,6 @@ forecasting.
 
 This processing pipeline was developed to create the [dataset](https://doi.org/tbd) for the model and research study [Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://doi.org/tbd) published in *TBD* (2026). If you use this software or the data in your research, please cite it as follows:
 
-**ASK STEFAN IF/HOW TO CITE HIS PSF PAPER AND JSOC SCRIPT!**
 
 ```bibtex
 @article{Collin2026journal,
@@ -29,6 +28,8 @@ This processing pipeline was developed to create the [dataset](https://doi.org/t
 }
 ```
 [Journal Publication](https://doi.org/tbd) | [Data Publication](https://doi.org/tbd) 
+
+The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.7910/DVN/DYT4ZL),[[2]](https://doi.org/10.3847/1538-4365/adbaed)[[3]](https://doi.org/10.1007/s11207-024-02321-y)).
 
 ## Overview
 
@@ -363,6 +364,8 @@ This work is released under [MIT License](https://github.com/DanielCollin96/INSE
 ## References
 
 - Publication (please cite): **Insert when submitted**
+- Point-spread functions: [Hofmeister (2024). Dataset](https://doi.org/10.7910/DVN/DYT4ZL); [Hofmeister et al., (2025). ApJS, 278(1), 8](https://doi.org/10.3847/1538-4365/adbaed)
+- Deconvolution: [Hofmeister (2024). Sol Phys 299, 77](https://doi.org/10.1007/s11207-024-02321-y)
 - SDO Mission: <https://sdo.gsfc.nasa.gov/>
 - JSOC Data Center: <http://jsoc.stanford.edu/>
 - SunPy: <https://sunpy.org/>
