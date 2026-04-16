@@ -6,7 +6,7 @@ forecasting.
 
 ## Journal Publication and Citation
 
-This processing pipeline was developed to create the [dataset](https://doi.org/tbd) for the model and research study [Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://doi.org/tbd) published in *TBD* (2026). If you use this software or the data in your research, please cite it as follows:
+This processing pipeline was developed to create the [dataset]([https://doi.org/tbd](https://doi.org/10.5880/GFZ.OJSJ.2026.001)) for the model and research study [Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://doi.org/tbd) published in *TBD* (2026). If you use this software or the data in your research, please cite it as follows:
 
 
 ```bibtex
@@ -19,15 +19,15 @@ This processing pipeline was developed to create the [dataset](https://doi.org/t
 }
 
 @misc{Collin2026dataset,
-  title = {TBD},
+  title = {Solar Images and Physical Features for Probabilistic Solar Wind Speed Prediction},
   author = {Collin, Daniel and Shprits, Yuri and  Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
   publisher = {GFZ Data Services},
   year = {2026},
   howpublished = {Data Set},
-  doi = {10.5880/GFZ.2.7.2026.XXX}
+  doi = {10.5880/GFZ.OJSJ.2026.001}
 }
 ```
-[Journal Publication](https://doi.org/tbd) | [Data Publication](https://doi.org/tbd) 
+[Journal Publication](https://doi.org/tbd) | [Data Publication]([https://doi.org/tbd](https://doi.org/10.5880/GFZ.OJSJ.2026.001)) 
 
 The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.3847/1538-4365/adbaed), [[2]](https://doi.org/10.7910/DVN/DYT4ZL), [[3]](https://doi.org/10.1007/s11207-024-02321-y)) listed below in the References section.
 
