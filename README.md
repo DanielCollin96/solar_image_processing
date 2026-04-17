@@ -357,7 +357,7 @@ In case of questions or bugs, please contact Daniel at collin@gfz.de.
 
 ## License
 
-This work is released under [MIT License](https://github.com/DanielCollin96/INSERT_LATER).
+This work is released under [MIT License](https://github.com/DanielCollin96/solar_image_processing/blob/main/LICENSE).
 
 ---
 
