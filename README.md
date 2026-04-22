@@ -90,54 +90,55 @@ solar_images/
 
 ---
 
-## Installation
+## Getting Started
+
+This project uses [uv](https://docs.astral.sh/uv/) for extremely fast Python package and project management.
 
 ### 1. Install uv
 
-[uv](https://docs.astral.sh/uv/) is a fast Python package and project manager.
+If you don't have uv installed yet, install it:
 
-**Linux / macOS:**
+#### Linux / MacOS
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**Windows (PowerShell):**
-```powershell
+#### Windows (Powershell)
+
+```bash
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Verify the installation:
+#### Verify the installation:
+
 ```bash
 uv --version
 ```
 
-### 2. Create the virtual environment
+### 2. Project Setup
 
-From the project root directory, run:
+After cloning the repository, navigate to the project directory and sync the dependencies. 
+This will automatically create a virtual environment (`.venv`) and install all required packages from the `uv.lock` file.
+
 ```bash
+# Clone the repository
+git clone https://github.com/DanielCollin96/solar_image_processing.git
+cd solar_image_processing
+
+# Create a virtual environment and install all dependencies
 uv sync
 ```
 
-This reads `pyproject.toml` and `uv.lock`, creates a `.venv/` directory, and
-installs all pinned dependencies. To also install the optional test dependencies:
+
+### 3. Running Scripts
+
+You do not need to activate the virtual environment manually. 
+Use `uv run` to execute scripts:
+
 ```bash
-uv sync --extra dev
+uv run <script>.py
 ```
-
-### 3. Activate the virtual environment
-
-**Linux / macOS:**
-```bash
-source .venv/bin/activate
-```
-
-**Windows:**
-```powershell
-.venv\Scripts\activate
-```
-
-After activation, `python` resolves to the project's interpreter and all
-dependencies are available. Deactivate with `deactivate`.
 
 
 ### 4. Register with JSOC
