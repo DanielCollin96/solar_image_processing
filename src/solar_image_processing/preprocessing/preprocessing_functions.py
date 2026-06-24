@@ -166,7 +166,7 @@ def register_image(
     newmap.meta["bitpix"] = -64
 
     # Reconstruct map from original data to handle any size mismatch
-    newmap = sunpy.map.Map(_extract_or_pad_data(smap.data, orig_shape), smap.meta)
+    newmap = sunpy.map.Map(_extract_or_pad_data(newmap.data, orig_shape), newmap.meta)
 
     # Set reference pixel to image centre
     newmap.meta["crpix1"] = orig_shape / 2 + 0.5
