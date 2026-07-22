@@ -241,7 +241,7 @@ cd scripts
 ### 1. Download
 
 ```bash
-python download_solar_images.py
+uv run download_solar_images.py
 ```
 
 Downloads images at hourly cadence for all channels listed in `channels` over
@@ -262,7 +262,7 @@ data/unprocessed_images/SDO/
 ### 2. Preprocess
 
 ```bash
-python preprocess_solar_images.py
+uv run preprocess_solar_images.py
 ```
 
 Processes all channels over the configured date range. Missing hourly
@@ -303,7 +303,7 @@ subsequent runs.
 ### 3. Crop
 
 ```bash
-python crop_solar_images.py
+uv run crop_solar_images.py
 ```
 
 Reads preprocessed `.npy` files, downsamples them using block-sum reduction
