@@ -15,9 +15,16 @@ from solar_image_processing.utils.pipeline_config import PipelineConfig
 from solar_image_processing.utils.helper_functions import (
     find_missing_preprocessed_dates,
     find_missing_cropped_dates,
-    load_existing_preprocessed_dates,
+    load_existing_preprocessed_files,
+    find_available_months,
 )
 
+def strip_source_tag(file: str) -> str:
+    path = Path(file)
+    parts = path.stem.split('_')
+    stem = '_'.join(parts[:-1]) if parts[-1] in ('lev1', 'ql') else path.stem
+    name = f'{stem}{path.suffix}'
+    return f'{path.parent}/{name}' if str(path.parent) != '.' else name
 
 class ImageCropper:
     """
@@ -33,15 +40,31 @@ class ImageCropper:
         paths, date range, and cropping settings.
     """
 
-    def __init__(self, config: PipelineConfig) -> None:
+    _PATH_KEYS = {                                          # ← here
+        'catchup': ('preprocessed', 'cropped'),
+        'realtime': ('preprocessed_realtime', 'cropped_realtime'),
+    }
+
+    def __init__(self, config, mode='catchup', start_date=None, end_date=None,
+                 backfill=False, dry_run=False):
+        if mode not in self._PATH_KEYS:
+            raise ValueError(f"Unknown mode '{mode}'. Expected one of {sorted(self._PATH_KEYS)}.")
+
+        self.mode = mode
+        self.backfill = backfill
+        self.dry_run = dry_run
+
+        input_key, output_key = self._PATH_KEYS[mode]
+        self.path_input_root = config.paths[input_key]
+        self.path_output_root = config.paths[output_key]
+
         self.channels = config.channels
+        self.start_date = start_date or config.start_date
+        self.end_date = end_date or config.end_date
+
         self.paths = config.paths
-        self.start_date = config.start_date
-        self.end_date = config.end_date
         self.config = config.cropping_config
 
-        # Ensure output directories exist before processing starts
-        self._create_output_directories(self.start_date, self.end_date)
 
     def run(self) -> None:
         """
@@ -53,34 +76,6 @@ class ImageCropper:
             print(f'{"="*60}')
 
             self._process_channel(channel, self.start_date, self.end_date)
-
-    def _create_output_directories(self, start: datetime, end: datetime) -> None:
-        """
-        Create the year/month directory tree for cropped output.
-
-        Parameters
-        ----------
-        start : datetime
-            Start of the date range.
-        end : datetime
-            End of the date range.
-        """
-        cropped_path = self.paths['cropped']
-        cropped_path.mkdir(parents=True, exist_ok=True)
-
-        for channel in self.channels:
-            channel_path = cropped_path / channel
-            channel_path.mkdir(exist_ok=True)
-
-            current_month = copy(start)
-            while current_month < end:
-                year_path = channel_path / current_month.strftime('%Y')
-                year_path.mkdir(exist_ok=True)
-
-                month_path = year_path / current_month.strftime('%m')
-                month_path.mkdir(exist_ok=True)
-
-                current_month += relativedelta(months=1)
 
     def _process_channel(
         self,
@@ -100,8 +95,8 @@ class ImageCropper:
         end : datetime
             End of the date range.
         """
-        path_preprocessed = self.paths['preprocessed'] / channel
-        path_cropped = Path(self.paths['cropped']) / channel
+        path_preprocessed = self.path_input_root / channel
+        path_cropped = self.path_output_root / channel
 
         current_month = datetime(start.year, start.month, 1)
         dates_to_check = []
@@ -150,16 +145,16 @@ class ImageCropper:
         path_input = path_preprocessed / month.strftime('%Y/%m')
         path_output = path_cropped / month.strftime('%Y/%m')
 
-        existing_preprocessed = load_existing_preprocessed_dates(path_input, channel)
-        missing_cropped, existing_cropped, _ = find_missing_cropped_dates(
+        existing_preprocessed = load_existing_preprocessed_files(path_input, channel)
+        _, existing_cropped, _ = find_missing_cropped_dates(
             month, path_output, channel
         )
 
         # Only crop files that have not been cropped yet
-        dates_to_crop = existing_preprocessed.difference(existing_cropped)
+        dates_to_crop = existing_preprocessed.index.difference(existing_cropped)
 
         if len(dates_to_crop) > 0:
-            files_to_crop = self._build_file_list(channel, dates_to_crop)
+            files_to_crop = existing_preprocessed.loc[dates_to_crop].tolist()
             self._run_parallel_cropping(files_to_crop, path_input, path_output)
 
         # Re-check completeness after cropping
@@ -170,37 +165,13 @@ class ImageCropper:
             month, path_output, channel
         )
 
-        if np.all(missing_preprocessed == missing_cropped):
+        if set(missing_preprocessed) == set(missing_cropped):
             print(f'All images for {month.strftime("%Y/%m")} cropped successfully')
             return []
         else:
             print('Some preprocessed images were not cropped:')
             failed_dates = list(missing_cropped.difference(missing_preprocessed))
             return failed_dates
-
-    def _build_file_list(self, channel: str, dates: pd.Index) -> List[str]:
-        """
-        Build the list of ``.npy`` filenames from a set of dates.
-
-        Parameters
-        ----------
-        channel : str
-            Channel identifier.
-        dates : pd.Index
-            Dates for which filenames are required.
-
-        Returns
-        -------
-        List[str]
-            Filenames in the format ``<channel_str>_<YYYY-MM-DD_HH:MM>.npy``.
-        """
-        # AIA channel strings are like 'aia_171'; extract '171' for filenames
-        channel_str = channel.split('_')[1] if 'aia' in channel else channel
-        return [
-            f'{channel_str}_{date.strftime("%Y-%m-%d_%H:%M")}.npy'
-            for date in dates
-        ]
-
     def _run_parallel_cropping(
         self,
         files: List[str],
@@ -276,7 +247,9 @@ class ImageCropper:
             )
 
         # Save as float32 to reduce storage size
-        np.save(path_output / file, img.astype('float32'))
+        out_file = path_output / strip_source_tag(file)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        np.save(out_file, img.astype('float32'))
 
     def _apply_crop(
         self,
