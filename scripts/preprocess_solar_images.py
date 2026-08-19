@@ -1,30 +1,26 @@
+import argparse
 from pathlib import Path
 
-from solar_image_processing.preprocessing.solar_image_preprocessor import SolarImagePreprocessor
 from solar_image_processing.utils.pipeline_config import PipelineConfig
+from solar_image_processing.preprocessing.solar_image_preprocessor import SolarImagePreprocessor
 
+def main():
+    ap = argparse.ArgumentParser(description='Unified SDO/AIA preprocessing.')
+    ap.add_argument('--mode', choices=['catch-up', 'incremental', 'realtime'], default='realtime')
+    ap.add_argument('--months', type=int, default=2, help='lookback window (incremental/realtime)')
+    ap.add_argument('--all', action='store_true', help='ignore the window; process full range')
+    ap.add_argument('--retry-fails', action='store_true')
+    ap.add_argument('--config', default=None)
+    args = ap.parse_args()
+    
+    cfg_path = Path(args.config) if args.config else Path(__file__).resolve().parent.parent / 'configs' / 'pipeline_config.yaml'
+    config = PipelineConfig(cfg_path)
 
-def main() -> None:
-    """
-    Preprocess SDO solar images according to the pipeline configuration.
+    source = 'quicklook' if args.mode == 'realtime' else 'lev1'
+    months = None if (args.mode == 'catch-up' or args.all) else args.months
 
-    Reads all settings from ``configs/pipeline_config.yaml``, then runs
-    the preprocessor for all configured channels over the configured date range.
-
-    Notes
-    -----
-    Edit ``configs/pipeline_config.yaml`` to change the channels, date range,
-    GPU usage, differential rotation setting, or paths before running this
-    script.
-    """
-    config_path = Path.cwd().parent / 'configs' / 'pipeline_config.yaml'
-    config = PipelineConfig(config_path)
-
-    preprocessor = SolarImagePreprocessor(config)
-    preprocessor.run()
-
+    pre = SolarImagePreprocessor(config, source=source, months=months)
+    pre.run()
 
 if __name__ == '__main__':
-    print('Starting preprocessing script')
     main()
-    print('Finished preprocessing script')

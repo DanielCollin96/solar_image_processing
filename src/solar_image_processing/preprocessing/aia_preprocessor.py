@@ -13,7 +13,7 @@ from aiapy.calibrate import update_pointing, correct_degradation
 from solar_image_processing.psf_deconvolution.deconvolve_image import deconvolve_bid
 from solar_image_processing.utils.helper_functions import (
     read_file_name,
-    save_preprocessed_output,
+    save_preprocessed_output,quality_ok,
 )
 from solar_image_processing.preprocessing.preprocessing_functions import (
     register_image,
@@ -91,7 +91,7 @@ class AIAPreprocessor:
             return
 
         fits_file = path_input / file
-        date, product, channel = read_file_name(file, preprocessed=False)
+        date, product, channel, source = read_file_name(file, preprocessed=False)
 
         # One file may serve multiple target dates when used for gap filling
         target_dates = files_to_preprocess.loc[[file]].to_list()
@@ -106,7 +106,7 @@ class AIAPreprocessor:
             print(f'Map does not contain full disk: {product} {channel} {date}')
             return
 
-        if aia_map.meta['QUALITY'] != 0:
+        if not quality_ok(aia_map.meta['QUALITY'], source):
             print(f'Bad quality: {product} {channel} {date}')
             return
 
@@ -153,8 +153,14 @@ class AIAPreprocessor:
             from the final processed map.
         """
         # Upsample to full resolution before updating pointing
-        aia_map = aia_map.resample([4096, 4096] * u.pixel)
-        aia_map = update_pointing(aia_map, pointing_table=self.pointing_table)
+        lvl_num = aia_map.meta.get('LVL_NUM', aia_map.meta.get('lvl_num', 1.0))
+        is_calibrated = (lvl_num is not None and float(lvl_num) > 1.0)
+        print(f'  LVL_NUM={lvl_num}, pipeline={"reduced (lev1.5)" if is_calibrated else "full (lev1)"}')
+
+        # Pointing update — lev1 only
+        if not is_calibrated:
+            aia_map = aia_map.resample([4096, 4096] * u.pixel)
+            aia_map = update_pointing(aia_map, pointing_table=self.pointing_table)
 
         aia_map = self._apply_differential_rotation(aia_map, map_date, target_date)
 
@@ -162,7 +168,8 @@ class AIAPreprocessor:
         aia_map = aia_map.resample([1024, 1024] * u.pixel)
 
         aia_map = self._deconvolve(aia_map)
-        aia_map = register_image(aia_map)
+        if not is_calibrated:
+            aia_map = register_image(aia_map)
         aia_map = scale_solar_disk_radius(
             aia_map,
             rsun_target=self.config['target_rsun_arcsec'],

@@ -16,6 +16,7 @@ from solar_image_processing.utils.helper_functions import (
     load_calibration_data,
     find_files_to_preprocess,
     check_completeness_of_preprocessed_images,
+    keep_hourly,
 )
 
 
@@ -33,14 +34,20 @@ class SolarImagePreprocessor:
         Full pipeline configuration object.
     """
 
-    def __init__(self, config: PipelineConfig) -> None:
+    def __init__(self, config, source='lev1', months=None):
+        self.source = source
         self.channels = config.channels
         self.paths = config.paths
-        self.start_date = config.start_date
-        self.end_date = config.end_date
         self.config = config.preprocessing_config
-
-        # Ensure output directories exist before processing starts
+        if source == 'quicklook':
+            self.raw_key, self.out_key = 'unprocessed_realtime', 'preprocessed_realtime'
+        else:
+            self.raw_key, self.out_key = 'unprocessed', 'preprocessed'
+        if months is None:                       # catch-up / --all → full config range
+            self.start_date, self.end_date = config.start_date, config.end_date
+        else:                                    # incremental / realtime → last N months
+            self.end_date = datetime.utcnow()
+            self.start_date = self.end_date - relativedelta(months=months)
         self._create_output_directories()
 
     def run(self) -> None:
@@ -58,7 +65,7 @@ class SolarImagePreprocessor:
         """
         Create the year/month directory tree for preprocessed output.
         """
-        preprocessed_path = Path(self.paths['preprocessed'])
+        preprocessed_path = Path(self.paths[self.out_key])
         preprocessed_path.mkdir(parents=True, exist_ok=True)
 
         for channel in self.channels:
@@ -86,11 +93,13 @@ class SolarImagePreprocessor:
         """
         # Raw FITS files are stored in instrument-specific subdirectories
         if channel[:3] == 'aia':
-            path_raw = self.paths['unprocessed'] / 'AIA' / channel[-3:]
+            if self.source == 'quicklook':
+                path_raw = self.paths[self.raw_key] / 'AIA' / channel[-3:]   # ← confirm this subpath vs your tree
+            else:
+                path_raw = self.paths[self.raw_key] / 'AIA' / channel[-3:]
         elif channel[:3] == 'hmi':
-            path_raw = self.paths['unprocessed'] / 'HMI' / 'magnetogram'
-
-        path_preprocessed = Path(self.paths['preprocessed']) / channel
+            path_raw = self.paths[self.raw_key] / 'HMI' / 'magnetogram'
+        path_preprocessed = Path(self.paths[self.out_key]) / channel
         current_month = datetime(self.start_date.year, self.start_date.month, 1)
         dates_to_check = []
 
@@ -137,6 +146,8 @@ class SolarImagePreprocessor:
         path_output = path_preprocessed / month.strftime('%Y/%m')
 
         existing_raw_files = load_existing_raw_files(path_raw_month)
+        if self.source == 'quicklook':
+            existing_raw_files = keep_hourly(existing_raw_files)
         missing_dates, _ = find_missing_preprocessed_dates(
             month, path_output, channel, self.config['overwrite_existing']
         )
@@ -148,12 +159,13 @@ class SolarImagePreprocessor:
 
         if len(missing_dates) > 0:
             files_to_preprocess, new_exclusions = find_files_to_preprocess(
-                missing_dates, existing_raw_files, path_raw_month
+                missing_dates, existing_raw_files, path_raw_month,self.source
             )
 
             # Merge with any previous exclusions before saving
             if not files_to_exclude.empty:
                 new_exclusions = pd.concat([files_to_exclude, new_exclusions])
+            path_output.mkdir(parents=True, exist_ok=True)          # ← add this line
             new_exclusions.to_csv(path_output / 'preprocessing_fails.csv')
         else:
             files_to_preprocess = pd.Series(dtype=object)
@@ -239,10 +251,11 @@ class SolarImagePreprocessor:
                 for file in unique_files
             )
         elif channel[:3] == 'aia':
-            # PSF, degradation correction, and pointing tables are month-specific
-            psf, correction_table, pointing_table = load_calibration_data(
-                self.paths['instrument_data'], channel[-3:], month
-            )
+            if self.source == 'quicklook':
+                psf, correction_table, _ = load_calibration_data(self.paths['instrument_data'], channel[-3:], month=None)
+                pointing_table = None
+            else:
+                psf, correction_table, pointing_table = load_calibration_data(self.paths['instrument_data'], channel[-3:], month)
             preprocessor = AIAPreprocessor(pointing_table, psf, correction_table, self.config)
             Parallel(n_jobs=n_jobs)(
                 delayed(preprocessor.process_file)(
