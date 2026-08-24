@@ -37,7 +37,7 @@ download:
   rebin_factor: 4
   # Email address registered with JSOC for submitting data requests.
   # Register at: http://jsoc.stanford.edu/ajax/exportdata.html
-  email: collin@gfz.de
+  email: email@email.com
   # JSOC data series identifiers for each instrument.
   # These are standard JSOC series names that rarely need to be changed.
   jsoc_series:
