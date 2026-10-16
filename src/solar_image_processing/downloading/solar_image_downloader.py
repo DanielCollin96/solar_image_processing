@@ -489,7 +489,7 @@ class SIDCDownloader(BaseDownloader):
 
     Data characteristics:
         - Spatial resolution : 1024 x 1024 pixels
-        - Cadence            : 3 minutes
+        - Cadence            : 3 minutes on the server , only :00/:30 frames are downloaded
         - Latency            : ~15 minutes
         - Wavelengths        : 94, 131, 171, 193, 211, 304, 335, 1600, 1700, 4500
 
@@ -516,6 +516,13 @@ class SIDCDownloader(BaseDownloader):
     #: start_date (2010) would issue thousands of listings for days that never
     #: existed. Use --backfill to reach further back deliberately.
     DEFAULT_LOOKBACK_DAYS = 14
+        #: Keep one frame per :00 / :30 slot instead of every 3-min frame.
+    SLOT_MINUTES = 30
+    #: A frame counts for a slot only if it is within this many minutes of it.
+    SLOT_TOLERANCE_MINUTES = 6
+    #: Leave the most recent slots for the next run, so a late-arriving exact
+    #: :00/:30 frame is not missed in favour of an earlier neighbour.
+    SLOT_SETTLE_MINUTES = 30
 
     def __init__(self, config: PipelineConfig) -> None:
         super().__init__(config, path_key="unprocessed_realtime")
@@ -585,7 +592,7 @@ class SIDCDownloader(BaseDownloader):
 
                 for day_str in sorted(day_folders):
                     day_url = f"{month_url}{day_str}/"
-                    for filename in sorted(self._list_fits_in_url(day_url)):
+                    for filename in self._keep_slot_frames(self._list_fits_in_url(day_url)):
                         try:
                             obs_time = self._parse_time_from_filename(filename)
                         except ValueError:
@@ -693,7 +700,7 @@ class SIDCDownloader(BaseDownloader):
 
         while current_day <= end:
             day_url = self._day_url(channel, current_day)
-            for filename in sorted(self._list_fits_in_url(day_url)):
+            for filename in self._keep_slot_frames(self._list_fits_in_url(day_url)):
                 try:
                     obs_time = self._parse_time_from_filename(filename)
                 except ValueError:
@@ -729,6 +736,34 @@ class SIDCDownloader(BaseDownloader):
                 f"Cannot parse observation time from filename '{filename}'"
             ) from exc
 
+    def _keep_slot_frames(self, filenames: List[str]) -> List[str]:
+        """
+        Keep one frame per :00/:30 slot: the frame nearest the slot, within
+        SLOT_TOLERANCE_MINUTES. If the exact frame is missing, a neighbour
+        (e.g. :03) is used instead. Slots younger than SLOT_SETTLE_MINUTES
+        are left for the next run.
+        """
+        latest_slot = utc_now() - timedelta(minutes=self.SLOT_SETTLE_MINUTES)
+        tolerance = timedelta(minutes=self.SLOT_TOLERANCE_MINUTES)
+        best = {}
+        for name in filenames:
+            try:
+                t = self._parse_time_from_filename(name)
+            except ValueError:
+                continue
+            hour = t.replace(minute=0, second=0, microsecond=0)
+            minutes = (t - hour).total_seconds() / 60
+            slot = hour + timedelta(
+                minutes=round(minutes / self.SLOT_MINUTES) * self.SLOT_MINUTES
+            )
+            distance = abs(t - slot)
+            # Skip: too far from any slot, slot not settled yet, or the slot
+            # belongs to the neighbouring day (e.g. 23:58 -> next day's 00:00).
+            if distance > tolerance or slot > latest_slot or slot.date() != t.date():
+                continue
+            if slot not in best or distance < best[slot][0]:
+                best[slot] = (distance, name)
+        return [best[slot][1] for slot in sorted(best)]
     # ------------------------------------------------------------------
     # Download / metadata helpers
     # ------------------------------------------------------------------

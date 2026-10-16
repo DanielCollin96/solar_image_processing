@@ -16,7 +16,6 @@ from solar_image_processing.utils.helper_functions import (
     find_missing_preprocessed_dates,
     find_missing_cropped_dates,
     load_existing_preprocessed_files,
-    find_available_months,
 )
 
 def strip_source_tag(file: str) -> str:
@@ -40,30 +39,25 @@ class ImageCropper:
         paths, date range, and cropping settings.
     """
 
-    _PATH_KEYS = {                                          # ← here
-        'catchup': ('preprocessed', 'cropped'),
-        'realtime': ('preprocessed_realtime', 'cropped_realtime'),
+    _PATH_KEYS = {
+        'jsoc': ('preprocessed', 'cropped'),
+        'sidc': ('preprocessed_realtime', 'cropped_realtime'),
     }
 
-    def __init__(self, config, mode='catchup', start_date=None, end_date=None,
-                 backfill=False, dry_run=False):
-        if mode not in self._PATH_KEYS:
-            raise ValueError(f"Unknown mode '{mode}'. Expected one of {sorted(self._PATH_KEYS)}.")
-
-        self.mode = mode
-        self.backfill = backfill
-        self.dry_run = dry_run
-
-        input_key, output_key = self._PATH_KEYS[mode]
+    def __init__(self, config, source, start_date, end_date):
+        if source not in self._PATH_KEYS:
+            raise ValueError(f"Unknown source '{source}'. Expected one of {sorted(self._PATH_KEYS)}.")
+        input_key, output_key = self._PATH_KEYS[source]
         self.path_input_root = config.paths[input_key]
         self.path_output_root = config.paths[output_key]
-
         self.channels = config.channels
-        self.start_date = start_date or config.start_date
-        self.end_date = end_date or config.end_date
-
+        self.start_date = start_date
+        self.end_date = end_date
         self.paths = config.paths
         self.config = config.cropping_config
+
+    def _in_window(self, dates):
+        return dates[(dates >= self.start_date) & (dates <= self.end_date)]
 
 
     def run(self) -> None:
@@ -164,6 +158,8 @@ class ImageCropper:
         missing_cropped, _, _ = find_missing_cropped_dates(
             month, path_output, channel
         )
+        missing_preprocessed = self._in_window(missing_preprocessed)   # ← add
+        missing_cropped = self._in_window(missing_cropped)
 
         if set(missing_preprocessed) == set(missing_cropped):
             print(f'All images for {month.strftime("%Y/%m")} cropped successfully')

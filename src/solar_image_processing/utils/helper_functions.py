@@ -29,6 +29,24 @@ def quality_ok(quality, source='lev1'):
         return (q & ~BENIGN_QUALITY_BITS) == 0
     return q == 0
 
+def wcs_is_usable(meta) -> bool:
+    """
+    True only if the WCS astrometry keywords are present and non-zero.
+
+    Some JSOC frames ship with CDELT1/2 and CRPIX1/2 all zeroed while QUALITY
+    stays clean — this makes the WCS transform singular and crashes
+    coordinate_frame / differential rotation. Missing keyword -> None -> treated
+    as 0 -> rejected ("missing as 0").
+    """
+    for key in ('cdelt1', 'cdelt2', 'crpix1', 'crpix2'):
+        value = meta.get(key)
+        try:
+            if value is None or float(value) == 0.0:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
 def create_folders_for_preprocessed_images(
     start: datetime,
     end: datetime,
@@ -115,6 +133,9 @@ def find_missing_preprocessed_dates(
     path_to_preprocessed_files: Path,
     channel: str,
     overwrite_existing: bool = False,
+    end_date: Optional[datetime] = None,
+    latest_raw: Optional[datetime] = None,
+    start_date: Optional[datetime] = None,
 ) -> Tuple[pd.DatetimeIndex, pd.DatetimeIndex]:
     """
     Identify hourly target dates that have not yet been preprocessed.
@@ -146,6 +167,15 @@ def find_missing_preprocessed_dates(
     else:
         month_start = datetime(month.year, month.month, 1, 0)
         month_end = month_start + relativedelta(months=1) - timedelta(hours=1)
+        if start_date is not None:
+            month_start = max(month_start, pd.Timestamp(start_date).ceil('h').to_pydatetime())
+    # Never build target hours past the run's end_date (utcnow in realtime/
+    # incremental). Otherwise not-yet-observed hours count as "missing" and get
+    # filled by rotating the newest frame forward into the future.
+    if end_date is not None:
+        month_end = min(month_end, end_date)
+    if latest_raw is not None:
+        month_end = min(month_end, latest_raw)
     target_dates = pd.date_range(month_start, month_end, freq='1h')
 
     if overwrite_existing:
@@ -406,12 +436,24 @@ def load_calibration_data(
     if month is not None:
         print(f'Loading pointing table for {month.strftime("%Y%m")}.')
         pointing_table_path = path_to_config / f'pointing_table_{month.strftime("%Y%m")}.pickle'
-        try:
-            with open(pointing_table_path, 'rb') as f:
-                pointing_table = pickle.load(f)
-        except Exception:
-            print('Did not find saved pointing table. Downloading it.')
-            # Download ±1 month window to cover the full month
+        pointing_table = None
+        if pointing_table_path.exists():
+            try:
+                with open(pointing_table_path, 'rb') as f:
+                    pointing_table = pickle.load(f)
+                # A cached table whose coverage ends within ~7 days of now may
+                # still be growing upstream (JSOC pointing publishes ~1 day
+                # behind). Re-fetch so recent frames get their pointing;
+                # finalised older months load straight from cache.
+                last_stop = pd.Timestamp(str(pointing_table['T_STOP'].max())).tz_localize(None)
+                now = pd.Timestamp.now('UTC').tz_localize(None)
+                if (now - last_stop) < pd.Timedelta(days=7):
+                    print('Cached pointing table is recent; re-fetching for new records.')
+                    pointing_table = None
+            except Exception:
+                pointing_table = None
+        if pointing_table is None:
+            print('Downloading pointing table.')
             time_range = (
                 Time(month - timedelta(days=1)),
                 Time(month + timedelta(days=32)),
@@ -468,8 +510,9 @@ source='lev1'
         if reading_success:
             full_disk = contains_full_disk(smap)
             good_quality = quality_ok(smap.meta['QUALITY'], source)
+            good_wcs = wcs_is_usable(smap.meta)
 
-            if full_disk and good_quality:
+            if full_disk and good_quality and good_wcs:
                 good_dates.append(file_date)
                 return good_dates, bad_dates  # First good file found; stop
             else:
@@ -574,6 +617,9 @@ def check_completeness_of_preprocessed_images(
     current_month: datetime,
     path_to_preprocessed_files: Path,
     channel: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    latest_raw: Optional[datetime] = None,
 ) -> Tuple[bool, List[datetime]]:
     """
     Check whether all target dates for a month have been preprocessed.
@@ -600,7 +646,7 @@ def check_completeness_of_preprocessed_images(
         dates that are missing but not explained by ``files_to_exclude``.
     """
     missing_preprocessed_dates, _ = find_missing_preprocessed_dates(
-        current_month, path_to_preprocessed_files, channel, overwrite_existing=False
+        current_month, path_to_preprocessed_files, channel, overwrite_existing=False,end_date=end_date, latest_raw=latest_raw, start_date=start_date,
     )
 
     dates_to_check = []

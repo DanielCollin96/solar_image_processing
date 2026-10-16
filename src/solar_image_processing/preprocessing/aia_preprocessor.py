@@ -13,7 +13,7 @@ from aiapy.calibrate import update_pointing, correct_degradation
 from solar_image_processing.psf_deconvolution.deconvolve_image import deconvolve_bid
 from solar_image_processing.utils.helper_functions import (
     read_file_name,
-    save_preprocessed_output,quality_ok,
+    save_preprocessed_output,quality_ok,wcs_is_usable,
 )
 from solar_image_processing.preprocessing.preprocessing_functions import (
     register_image,
@@ -106,7 +106,7 @@ class AIAPreprocessor:
             print(f'Map does not contain full disk: {product} {channel} {date}')
             return
 
-        if not quality_ok(aia_map.meta['QUALITY'], source):
+        if not quality_ok(aia_map.meta['QUALITY'], source) or not wcs_is_usable(aia_map.meta):
             print(f'Bad quality: {product} {channel} {date}')
             return
 
@@ -124,9 +124,9 @@ class AIAPreprocessor:
                 save_preprocessed_output(
                     path_output, channel, target_date, preprocessed_image, meta_info
                 )
-            except Exception:
-                print(f'Failed to compute {product} {channel} {target_date}')
-                return
+            except Exception as e:
+                print(f'Failed to compute {product} {channel} {target_date}: {e!r}')
+                continue
 
     def preprocess(
         self,
