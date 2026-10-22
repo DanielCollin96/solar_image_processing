@@ -6,16 +6,18 @@ forecasting.
 
 ## Journal Publication and Citation
 
-This processing pipeline was developed to create the [dataset](https://doi.org/10.5880/GFZ.OJSJ.2026.001) for the model and research study [Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://doi.org/tbd) published in *TBD* (2026). If you use this software or the data in your research, please cite it as follows:
+This processing pipeline was developed to create the [dataset](https://doi.org/10.5880/GFZ.OJSJ.2026.001) for the model and research study [PROSWIN: Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images]([https://doi.org/tbd](https://arxiv.org/abs/2609.26683)) accepted in *AGU Advances* (2026). If you use this software or the data in your research, please cite it as follows:
 
 
 ```bibtex
-@article{Collin2026journal,
-  title   = {TBD},
-  author = {Collin, Daniel and Shprits, Yuri and  Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
-  journal = {TBD},
-  year    = {2026},
-  doi     = {TBD}
+@misc{collin2026,
+      title={PROSWIN: Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images}, 
+      author={Daniel Collin and Yuri Shprits and Luca Chiarabini and Stefan J. Hofmeister and Nadja Klein and Guillermo Gallego},
+      year={2026},
+      eprint={2609.26683},
+      archivePrefix={arXiv},
+      primaryClass={astro-ph.SR},
+      url={https://arxiv.org/abs/2609.26683}, 
 }
 
 @misc{Collin2026dataset,
@@ -27,7 +29,7 @@ This processing pipeline was developed to create the [dataset](https://doi.org/1
   doi = {10.5880/GFZ.OJSJ.2026.001}
 }
 ```
-[Journal Publication](https://doi.org/tbd) | [Data Publication](https://doi.org/10.5880/GFZ.OJSJ.2026.001) 
+[Preprint Publication]([https://doi.org/tbd](https://arxiv.org/abs/2609.26683)) | [Data Publication](https://doi.org/10.5880/GFZ.OJSJ.2026.001) 
 
 The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.3847/1538-4365/adbaed), [[2]](https://doi.org/10.7910/DVN/DYT4ZL), [[3]](https://doi.org/10.1007/s11207-024-02321-y)) listed below in the References section.
 
@@ -364,7 +366,7 @@ This work is released under [MIT License](https://github.com/DanielCollin96/sola
 
 ## References
 
-- Publication (please cite): **Insert when submitted**
+- Publication (please cite): [Collin et al., (2026). arXiv preprint.](https://arxiv.org/abs/2609.26683)
 - Point-spread functions: [1] [Hofmeister et al., (2025). ApJS, 278(1), 8](https://doi.org/10.3847/1538-4365/adbaed); [2] Dataset: [Hofmeister (2024)](https://doi.org/10.7910/DVN/DYT4ZL); 
 - Deconvolution: [3] [Hofmeister (2024). Sol Phys 299, 77](https://doi.org/10.1007/s11207-024-02321-y)
 - SDO Mission: <https://sdo.gsfc.nasa.gov/>
