@@ -4,91 +4,30 @@ A Python software for downloading and preprocessing SDO (Solar Dynamics Observat
 solar images for scientific analysis and machine learning applications in space weather
 forecasting.
 
-## Journal Publication and Citation
+Solar images are sourced from the [Joint Science Operations Center (JSOC)](http://jsoc.stanford.edu/) and in near real-time from the [Solar Influences Data analysis Center (SIDC)](https://sdo.oma.be/data/aia_quicklook/). 
 
-This processing pipeline was developed to create the [dataset](https://doi.org/10.5880/GFZ.OJSJ.2026.001) for the model and research study [PROSWIN: Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://arxiv.org/abs/2609.26683) accepted in *AGU Advances* (2026). If you use this software or the data in your research, please cite it as follows:
+If you use this software or the data in your research, please [cite it as shown below](#citation).
 
-
-```bibtex
-@misc{collin2026,
-      title={PROSWIN: Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images}, 
-      author={Daniel Collin and Yuri Shprits and Luca Chiarabini and Stefan J. Hofmeister and Nadja Klein and Guillermo Gallego},
-      year={2026},
-      eprint={2609.26683},
-      archivePrefix={arXiv},
-      primaryClass={astro-ph.SR},
-      url={https://arxiv.org/abs/2609.26683}, 
-}
-
-@misc{Collin2026dataset,
-  title = {Solar Images and Physical Features for Probabilistic Solar Wind Speed Prediction},
-  author = {Collin, Daniel and Shprits, Yuri and  Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
-  publisher = {GFZ Data Services},
-  year = {2026},
-  howpublished = {Data Set},
-  doi = {10.5880/GFZ.OJSJ.2026.001}
-}
-```
-[Preprint Publication](https://arxiv.org/abs/2609.26683) | [Data Publication](https://doi.org/10.5880/GFZ.OJSJ.2026.001) 
-
-The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.3847/1538-4365/adbaed), [[2]](https://doi.org/10.7910/DVN/DYT4ZL), [[3]](https://doi.org/10.1007/s11207-024-02321-y)) listed below in the References section.
-
+---
 ## Overview
+
+This package provides a three-stage pipeline that handles two data sources from a single set of scripts:
+
+- **JSOC lev1** — definitive science data, published with a latency of roughly one week.
+- **SIDC quicklook** — near-real-time data (level 1.5), available within minutes.
 
 This package provides a three-stage pipeline:
 
-| Stage | Script | What it does |
-|---|---|---|
-| **Download** | `scripts/download_solar_images.py` | Download raw FITS files from JSOC at hourly cadence |
-| **Preprocess** | `scripts/preprocess_solar_images.py` | Apply instrument- and data related corrections |
+| Stage | Script | What it does                                                |
+|---|---|-------------------------------------------------------------|
+| **Download** | `scripts/download_solar_images.py` | Download raw FITS from JSOC (lev1) and SIDC (quicklook) |
+| **Preprocess** | `scripts/preprocess_solar_images.py` | Apply instrument- and data related corrections              |
 | **Crop** | `scripts/crop_solar_images.py` | Downsample, crop, and optionally resize preprocessed images |
 
 Supported instruments:
 
 - **AIA** (Atmospheric Imaging Assembly): EUV channels 171, 193, 211 Å
 - **HMI** (Helioseismic and Magnetic Imager): line-of-sight magnetograms
-
----
-
-## Project Structure
-
-```
-solar_images/
-├── README.md
-├── pyproject.toml              # Package metadata and dependencies
-├── uv.lock                     # Locked dependency versions
-├── configs/
-│   └── pipeline_config.yaml    # All hyperparameters (edit this)
-├── scripts/                    # Executable scripts
-│   ├── download_solar_images.py
-│   ├── preprocess_solar_images.py
-│   └── crop_solar_images.py
-├── src/                        # Source code
-│   └── solar_image_processing/
-│       ├── cropping/
-│       │   └── solar_image_cropper.py
-│       ├── downloading/
-│       │   ├── jsoc_download.py
-│       │   └── solar_image_downloader.py
-│       ├── preprocessing/
-│       │   ├── aia_preprocessor.py
-│       │   ├── hmi_preprocessor.py
-│       │   ├── preprocessing_functions.py
-│       │   └── solar_image_preprocessor.py
-│       ├── psf_deconvolution/
-│       │   ├── deconvolve_image.py
-│       │   └── rebin_psf.py
-│       └── utils/
-│           ├── helper_functions.py
-│           └── pipeline_config.py
-├── tests/
-│   ├── data/                   # Data for testing (see below)
-│   └── test_pipeline.py        # Test script
-└── data/                       # Created during script execution
-    ├── unprocessed_images/
-    ├── preprocessed_images/
-    └── instrument_data/
-```
 
 ---
 
@@ -145,7 +84,7 @@ uv run <script>.py
 
 ### 4. Register with JSOC
 
-Downloading data requires a JSOC-registered email address:
+Downloading data from JSOC requires a JSOC-registered email address:
 
 1. Visit <http://jsoc.stanford.edu/ajax/exportdata.html>
 2. Enter your email and click **Check Email**
@@ -169,10 +108,13 @@ inline in the file. Key sections are:
 
 ```yaml
 paths:
-  unprocessed:    data/unprocessed_images/SDO               # raw FITS files
-  preprocessed:   data/preprocessed_images/deep_learning    # preprocessed files ready for deep learning
-  cropped:        data/preprocessed_images/sws_prediction   # further downsampled and cropped files for certain applications
-  instrument_data: data/instrument_data                     # instument-related data for preprocessing
+  unprocessed:           data/unprocessed_images/SDO                       # JSOC raw FITS
+  unprocessed_realtime:  data/unprocessed_images_realtime/SDO              # SIDC quicklook raw FITS
+  preprocessed:          data/preprocessed_images/uncropped                # JSOC preprocessed
+  preprocessed_realtime: data/preprocessed_images_realtime/uncropped       # SIDC preprocessed
+  cropped:               data/preprocessed_images/proswin                  # JSOC cropped
+  cropped_realtime:      data/preprocessed_images_realtime/proswin         # SIDC cropped
+  instrument_data:       data/instrument_data                              # calibration caches
 ```
 
 All paths are relative to the project root (or to `base_dir` if set).
@@ -181,11 +123,11 @@ Directories are created automatically on first run.
 ### Date range
 
 ```yaml
-start_date: "2010-05-01 00:00:00"
-end_date:   "2024-06-30 23:00:00"
+start_date: "2026-03-01 00:00:00"
+end_date:   "2026-07-29 23:00:00"
 ```
 
-Put here the time range you want to download or process. Supported formats: `"YYYY-MM-DD"` or `"YYYY-MM-DD HH:MM:SS"`.
+The time range used when a run is not bounded by `--days` or `--start/--end`. Supported formats: `"YYYY-MM-DD"` or `"YYYY-MM-DD HH:MM:SS"`.
 
 ### Channels
 
@@ -217,6 +159,7 @@ preprocessing:
   overwrite_existing: false        # reprocess files that already exist
   load_preprocessing_fails: false  # skip dates that failed previously
 ```
+`overwrite_existing` matters when re-running over dates that already have output: with `false`, existing files are skipped; set it to `true` to force reprocessing (for example, to re-apply an updated correction to already-processed frames).
 
 ### Cropping options
 
@@ -232,47 +175,39 @@ cropping:
 
 ## Usage
 
-All scripts read configuration from `configs/pipeline_config.yaml` and must be
-run **from inside the `scripts/` directory** so the config file is located
-correctly:
-
-```bash
-cd scripts
-```
+All scripts read configuration from `configs/pipeline_config.yaml` (resolved relative to the package, so they can be run from the project root). Each stage takes a required `--source {jsoc, sidc}` selecting the data source.
 
 ### 1. Download
 
 ```bash
-uv run download_solar_images.py
+uv run python scripts/download_solar_images.py --source jsoc
+uv run python scripts/download_solar_images.py --source sidc
 ```
 
-Downloads images at hourly cadence for all channels listed in `channels` over
-the configured date range. For each day, a single batch request is attempted
-first; individual hourly requests are used as a fallback if the batch fails.
+Downloads images for all channels listed in `channels`. JSOC (lev1) is published roughly a week behind real time and downloaded at an hourly cadence. SIDC (quicklook, level 1.5) is downloaded at a 30-minute cadence (two files per hour).
 
-**Output:** raw FITS files and per-request metadata pickles saved to:
-```
-data/unprocessed_images/SDO/
-├── AIA/
-│   ├── 171/YYYY/MM/
-│   ├── 193/YYYY/MM/
-│   └── 211/YYYY/MM/
-└── HMI/
-    └── magnetogram/YYYY/MM/
-```
+**Output:** raw FITS files and per-request metadata pickles under `data/unprocessed_images/SDO/` (JSOC) and `data/unprocessed_images_realtime/SDO/` (SIDC), organised day-wise as `.../AIA/{171|193|211}/YYYY/MM/DD/`.
 
 ### 2. Preprocess
 
 ```bash
-uv run preprocess_solar_images.py
+# JSOC lev1 — recent window (default 14 days)
+uv run python scripts/preprocess_solar_images.py --source jsoc
+
+# SIDC quicklook — recent window
+uv run python scripts/preprocess_solar_images.py --source sidc
+
+# bound an explicit range, or process everything available
+uv run python scripts/preprocess_solar_images.py --source jsoc --start 2026-03-01 --end 2026-03-31
+uv run python scripts/preprocess_solar_images.py --source jsoc --all
 ```
 
-Processes all channels over the configured date range. Missing hourly
-observations are filled using the temporally closest available raw file
-within a ±24.5 h window; differential rotation is applied when the time
-gap exceeds 6 minutes (if enabled).
+Common flags: `--days N` (rolling recent window, default 14), `--start/--end` (explicit date range), `--all` (ignore the window, process the full configured range), `--config PATH` (use an alternate config).
 
-**AIA pipeline per image:**
+Missing hourly observations are filled using the temporally closest available raw file within a ±24.5 h window; differential rotation is applied when the time gap exceeds 6 minutes (if enabled).
+
+**AIA pipeline per image (JSOC lev1):**
+
 1. Upsample to 4096 px and update pointing
 2. Apply differential rotation (if gap > 6 min)
 3. Downsample to 1024 px and deconvolve with the instrument PSF
@@ -282,45 +217,31 @@ gap exceeds 6 minutes (if enabled).
 7. Normalise by exposure time (DN/s)
 8. Flip to solar north-up orientation
 
-**HMI pipeline per image:**
-1. Upsample to 4096 px
-2. Apply differential rotation (if gap > 6 min)
-3. Downsample to 1024 px
-4. Register with zero fill for off-disk regions
-5. Replace NaN values with zero
-6. Normalise solar disk radius
-7. Flip to solar north-up orientation
+SIDC quicklook (lev1.5) is already pointed, registered and binned to 1024, so it skips steps 1, 2 (pointing) and 4 and runs the remaining corrections (deconvolution, disk-radius normalisation, degradation correction, exposure normalisation, flip).
 
-**Calibration data** (PSF, degradation correction, pointing tables) is loaded
-from `instrument_data/` on first use and cached there as pickle files for
-subsequent runs.
+**HMI pipeline per image (historical data only):** upsample → differential rotation → downsample → register with zero fill → replace NaNs with zero → normalise disk radius → flip.
 
-**Output:** one file pair per hourly timestep saved to
-`data/preprocessed_images/deep_learning/{channel}/YYYY/MM/`:
+Calibration data (PSF, degradation correction, pointing tables) is loaded from `instrument_data/` on first use and cached there as pickle files. The pointing table is used for JSOC lev1 only; SIDC quicklook skips it.
+
+**Output:** one file pair per timestep, day-wise under `data/preprocessed_images/uncropped/{channel}/YYYY/MM/DD/` (JSOC) or `data/preprocessed_images_realtime/uncropped/...` (SIDC):
+
 ```
-{channel}_{YYYY-MM-DD_HH:MM}.npy          # image array (float32)
-{channel}_{YYYY-MM-DD_HH:MM}_meta.pickle  # FITS header metadata
+{channel}_{YYYY-MM-DD_HH:MM}.npy           # image array (float32)
+{channel}_{YYYY-MM-DD_HH:MM}_meta.pickle   # FITS header metadata
 ```
 
 ### 3. Crop
 
 ```bash
-uv run crop_solar_images.py
+uv run python scripts/crop_solar_images.py --source jsoc --start 2024-06-01 --end 2024-06-30
+uv run python scripts/crop_solar_images.py --source sidc --start 2026-01-01 --end 2026-04-30
 ```
 
-Reads preprocessed `.npy` files, downsamples them using block-sum reduction
-(which preserves total flux), crops, and optionally resizes.
+Reads preprocessed `.npy` files, downsamples them using block-sum reduction (which preserves total flux), crops, and optionally resizes. Two crop modes are available via `crop_mode` in the config: `square` (symmetric pixel crop centred on the image, then an optional bicubic resize) and `disk` (crop to the solar disk boundary using the disk radius in the metadata pickle).
 
-Two crop modes are available:
+**Output:** cropped arrays saved day-wise under `data/preprocessed_images/proswin/` (JSOC) or `data/preprocessed_images_realtime/proswin/` (SIDC), with the same filename as the preprocessed input.
 
-- **`square`** — symmetric pixel crop centred on the image, followed by an
-  optional bicubic resize.
-- **`disk`** — crop to the solar disk boundary, using the disk radius stored
-  in the accompanying metadata pickle.
 
-**Output:** cropped arrays saved to `data/preprocessed_images/sws_prediction/`
-(or the path set under `paths.cropped`) with the same filename as the
-preprocessed input.
 
 ---
 
@@ -337,24 +258,45 @@ Without a GPU, deconvolution runs on the CPU and is significantly slower.
 
 ---
 
-## Running Tests
+## Citation
 
-The integration test runs the full pipeline against a small reference dataset
-stored in `tests/data/reference/` and compares results to stored reference
-outputs. Reference data can be downloaded here **(insert test data download link)**.
+This processing pipeline was developed to create the [dataset](https://doi.org/10.5880/GFZ.OJSJ.2026.001) for the model and research study [PROSWIN: Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images](https://doi.org/10.1029/2026AV002524) published in *AGU Advances* (2026). If you use this software or the data in your research, please cite it as follows:
 
-```bash
-cd tests
-pytest test_pipeline.py -v
+
+```bibtex
+@article{Collin2026,
+    author = {Collin, Daniel and Shprits, Yuri and Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
+    title = {PROSWIN: Probabilistic Solar Wind Speed Forecasting Using Deep Distributional Regression From Solar Images},
+    journal = {AGU Advances},
+    volume = {7},
+    number = {8},
+    pages = {e2026AV002524},
+    doi = {https://doi.org/10.1029/2026AV002524},
+    year = {2026}
+}
+
+@misc{Collin2026dataset,
+    title = {Solar Images and Physical Features for Probabilistic Solar Wind Speed Prediction},
+    author = {Collin, Daniel and Shprits, Yuri and  Chiarabini, Luca and Hofmeister, Stefan J. and Klein, Nadja and Gallego, Guillermo},
+    publisher = {GFZ Data Services},
+    year = {2026},
+    howpublished = {Data Set},
+    doi = {10.5880/GFZ.OJSJ.2026.001}
+}
 ```
+[Journal Publication](https://doi.org/10.1029/2026AV002524) | [Data Publication](https://doi.org/10.5880/GFZ.OJSJ.2026.001) 
+
+The deconvolution algorithm with the instrumental point-spread functions uses the works of Stefan J. Hofmeister ([[1]](https://doi.org/10.3847/1538-4365/adbaed), [[2]](https://doi.org/10.7910/DVN/DYT4ZL), [[3]](https://doi.org/10.1007/s11207-024-02321-y)) listed below in the References section.
+
 
 ---
 
 ## Code developer
 
-[Daniel Collin](https://www.linkedin.com/in/daniel-collin-52abb0205/). 
+- [Daniel Collin](https://www.linkedin.com/in/daniel-collin-52abb0205/). 
+- [Ravi Shankar Chaurasia](https://www.linkedin.com/in/ravishankarchaurasia/)
 
-In case of questions or bugs, please contact Daniel at collin@gfz.de.
+In case of questions or bugs, please contact Daniel at collin@gfz.de or Ravi at ravito@gfz.de.
 
 ---
 
@@ -366,11 +308,12 @@ This work is released under [MIT License](https://github.com/DanielCollin96/sola
 
 ## References
 
-- Publication (please cite): [Collin et al., (2026). arXiv preprint.](https://arxiv.org/abs/2609.26683)
+- Publication (please cite): [Collin et al., (2026). AGU Advances.](https://doi.org/10.1029/2026AV002524)
 - Point-spread functions: [1] [Hofmeister et al., (2025). ApJS, 278(1), 8](https://doi.org/10.3847/1538-4365/adbaed); [2] Dataset: [Hofmeister (2024)](https://doi.org/10.7910/DVN/DYT4ZL); 
 - Deconvolution: [3] [Hofmeister (2024). Sol Phys 299, 77](https://doi.org/10.1007/s11207-024-02321-y)
 - SDO Mission: <https://sdo.gsfc.nasa.gov/>
 - JSOC Data Center: <http://jsoc.stanford.edu/>
+- SIDC / Royal Observatory of Belgium: <https://www.sidc.be/>
 - SunPy: <https://sunpy.org/>
 - aiapy: <https://aiapy.readthedocs.io/>
 - uv: <https://docs.astral.sh/uv/>
