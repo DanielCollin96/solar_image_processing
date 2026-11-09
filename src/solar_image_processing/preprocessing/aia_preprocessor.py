@@ -169,7 +169,7 @@ class AIAPreprocessor:
 
         aia_map = self._deconvolve(aia_map)
         if not is_calibrated:
-            aia_map = register_image(aia_map)
+            aia_map = register_image(aia_map, scaling=False)
         aia_map = scale_solar_disk_radius(
             aia_map,
             rsun_target=self.config['target_rsun_arcsec'],

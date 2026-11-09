@@ -91,6 +91,7 @@ def register_image(
     smap: sunpy.map.Map,
     missing: Optional[float] = None,
     arcsec_pix_target: Optional[float] = None,
+    scaling: bool = True
 ) -> sunpy.map.Map:
     """
     Register an SDO image to a common reference frame.
@@ -109,6 +110,8 @@ def register_image(
         Target pixel scale in arcseconds per pixel. Defaults to
         ``0.6 * (4096 / image_size)`` arcsec/pix, matching the AIA
         native scale at 4096 px scaled to the working resolution.
+    scaling: bool, optional
+        If ``True``, scale the image to the target pixel scale.
 
     Returns
     -------
@@ -130,13 +133,19 @@ def register_image(
         arcsec_pix_target = 0.6 * downsample_factor
 
     scale = arcsec_pix_target * u.arcsec
-    scale_factor = smap.scale[0] / scale
+
+    if scaling:
+        scale_factor = smap.scale[0] / scale
+        scale_factor = scale_factor.value
+    else:
+        scale_factor = 1.0
+
     missing = smap.min() if missing is None else missing
 
     # Rotate and scale; recenter=True places the disk centre at crpix
     tempmap = smap.rotate(
         recenter=True,
-        scale=scale_factor.value,
+        scale=scale_factor,
         order=3,
         missing=missing,
         method='scipy',

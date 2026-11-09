@@ -147,7 +147,7 @@ class HMIPreprocessor:
         hmi_map = hmi_map.resample([1024, 1024] * u.pixel)
 
         # Register with zero fill for off-disk (missing) regions
-        hmi_map = register_image(hmi_map, missing=0.0)
+        hmi_map = register_image(hmi_map, missing=0.0, scaling=False)
 
         # Replace NaN values (e.g., off-disk pixels after rotation) with zero
         hmi_map = sunpy.map.Map(np.nan_to_num(np.array(hmi_map.data)), hmi_map.meta)
