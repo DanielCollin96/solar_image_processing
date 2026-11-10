@@ -1,3 +1,4 @@
+
 import os
 import pickle
 from copy import copy
@@ -5,13 +6,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import aiapy.calibrate.utils
+
 import astropy.units as u
 import numpy as np
 import pandas as pd
 import sunpy.map
-from aiapy.calibrate.utils import get_correction_table, get_pointing_table
-from aiapy.psf import calculate_psf
+from aiapy.calibrate.util import get_correction_table, get_pointing_table
+from aiapy.psf import psf as calculate_psf
 from astropy.time import Time
 from dateutil.relativedelta import relativedelta
 from joblib import Parallel, delayed, cpu_count
@@ -19,7 +20,32 @@ from sunpy.map import contains_full_disk
 
 from solar_image_processing.psf_deconvolution.rebin_psf import rebin_psf
 
+BENIGN_QUALITY_BITS = (1 << 30) | (1 << 2) | (1 << 21)   # quicklook label, ASD_REC, AIAGP6
 
+def quality_ok(quality, source='lev1'):
+    """QL: keep clean + benign (bits 2/21). lev1: strict QUALITY==0 (batch unchanged)."""
+    q = int(quality) & 0xFFFFFFFF
+    if source == 'quicklook':
+        return (q & ~BENIGN_QUALITY_BITS) == 0
+    return q == 0
+
+def wcs_is_usable(meta) -> bool:
+    """
+    True only if the WCS astrometry keywords are present and non-zero.
+
+    Some JSOC frames ship with CDELT1/2 and CRPIX1/2 all zeroed while QUALITY
+    stays clean — this makes the WCS transform singular and crashes
+    coordinate_frame / differential rotation. Missing keyword -> None -> treated
+    as 0 -> rejected ("missing as 0").
+    """
+    for key in ('cdelt1', 'cdelt2', 'crpix1', 'crpix2'):
+        value = meta.get(key)
+        try:
+            if value is None or float(value) == 0.0:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 def create_folders_for_preprocessed_images(
     start: datetime,
@@ -86,12 +112,16 @@ def find_missing_cropped_dates(
         month_end = month_start + relativedelta(months=1) - timedelta(hours=1)
     target_dates = pd.date_range(month_start, month_end, freq='1h')
 
-    cropped_files = sorted(os.listdir(path_to_cropped_files))
     existing_cropped_dates = []
-    for file in cropped_files:
-        if file.endswith('.npy') and file[:3] == channel_str:
-            file_date, _, _ = read_file_name(file, preprocessed=True)
-            existing_cropped_dates.append(file_date)
+    if os.path.isdir(path_to_cropped_files):
+        for day_name in sorted(os.listdir(path_to_cropped_files)):
+            day_path = path_to_cropped_files / day_name
+            if not day_path.is_dir():
+                continue
+            for file in sorted(os.listdir(day_path)):
+                if file.endswith('.npy') and file[:3] == channel_str:
+                    file_date, _, _, _ = read_file_name(file, preprocessed=True)
+                    existing_cropped_dates.append(file_date)
 
     existing_cropped_dates = pd.DatetimeIndex(existing_cropped_dates)
     missing_cropped_dates = target_dates.difference(existing_cropped_dates)
@@ -103,6 +133,9 @@ def find_missing_preprocessed_dates(
     path_to_preprocessed_files: Path,
     channel: str,
     overwrite_existing: bool = False,
+    end_date: Optional[datetime] = None,
+    latest_raw: Optional[datetime] = None,
+    start_date: Optional[datetime] = None,
 ) -> Tuple[pd.DatetimeIndex, pd.DatetimeIndex]:
     """
     Identify hourly target dates that have not yet been preprocessed.
@@ -134,90 +167,210 @@ def find_missing_preprocessed_dates(
     else:
         month_start = datetime(month.year, month.month, 1, 0)
         month_end = month_start + relativedelta(months=1) - timedelta(hours=1)
+        if start_date is not None:
+            month_start = max(month_start, pd.Timestamp(start_date).ceil('h').to_pydatetime())
+    # Never build target hours past the run's end_date (utcnow in realtime/
+    # incremental). Otherwise not-yet-observed hours count as "missing" and get
+    # filled by rotating the newest frame forward into the future.
+    if end_date is not None:
+        month_end = min(month_end, end_date)
+    if latest_raw is not None:
+        month_end = min(month_end, latest_raw)
     target_dates = pd.date_range(month_start, month_end, freq='1h')
 
     if overwrite_existing:
         return target_dates, target_dates
 
-    preprocessed_files = sorted(os.listdir(path_to_preprocessed_files))
     existing_preprocessed_dates = []
-    for file in preprocessed_files:
-        if file.endswith('.npy') and file[:3] == channel_str:
-            file_date, _, _ = read_file_name(file, preprocessed=True)
-            existing_preprocessed_dates.append(file_date)
+    if os.path.isdir(path_to_preprocessed_files):
+        for day_name in sorted(os.listdir(path_to_preprocessed_files)):
+            day_path = path_to_preprocessed_files / day_name
+            if not day_path.is_dir():
+                continue
+            for file in sorted(os.listdir(day_path)):
+                if file.endswith('.npy') and file[:3] == channel_str:
+                    file_date, _, _, _ = read_file_name(file, preprocessed=True)
+                    existing_preprocessed_dates.append(file_date)
 
     existing_preprocessed_dates = pd.DatetimeIndex(existing_preprocessed_dates)
     missing_preprocessed_dates = target_dates.difference(existing_preprocessed_dates)
     return missing_preprocessed_dates, target_dates
 
 
-def load_existing_preprocessed_dates(
+def load_existing_preprocessed_files(
     path_to_preprocessed_files: Path,
     channel: str,
-) -> pd.DatetimeIndex:
+) -> pd.Series:
     """
-    Return the set of dates for which preprocessed files already exist.
+    Index the preprocessed files that exist for one month, keyed by target date.
+
+    Walks the ``DD/`` subdirectories beneath a month-level directory and
+    returns the filenames found, each prefixed with its day folder so that
+    ``path_to_preprocessed_files / value`` resolves correctly.
+
+    Counterpart to :func:`load_existing_raw_files`. Unlike
+    :func:`load_existing_preprocessed_dates`, which returns dates only, this
+    keeps the filename so callers never reconstruct one. That matters because
+    the source tag (``_lev1`` / ``_ql``) cannot be derived from a date: which
+    hours came from JSOC and which from the SIDC quicklook stream is recorded
+    only in the filename on disk.
 
     Parameters
     ----------
     path_to_preprocessed_files : Path
-        Directory containing preprocessed ``.npy`` files.
+        Month-level directory, e.g. ``.../uncropped/aia_171/2026/07``.
     channel : str
-        Channel identifier (e.g. ``'aia_171'``, ``'hmi'``).
-
-    Returns
-    -------
-    pd.DatetimeIndex
-        Sorted index of dates with existing preprocessed files.
-    """
-    channel_str = channel.split('_')[1] if 'aia' in channel else channel
-
-    preprocessed_files = sorted(os.listdir(path_to_preprocessed_files))
-    existing_preprocessed_dates = []
-    for file in preprocessed_files:
-        if file.endswith('.npy') and file[:3] == channel_str:
-            file_date, _, _ = read_file_name(file, preprocessed=True)
-            existing_preprocessed_dates.append(file_date)
-
-    return pd.DatetimeIndex(existing_preprocessed_dates)
-
-def load_existing_raw_files(path_to_raw_files: Path) -> pd.Series:
-    """
-    Build an index of existing raw FITS files, keyed by observation date.
-
-    Duplicate observation dates are deduplicated, keeping the first occurrence.
-
-    Parameters
-    ----------
-    path_to_raw_files : Path
-        Directory containing raw FITS files.
+        Channel identifier, e.g. ``'aia_171'`` or ``'hmi'``.
 
     Returns
     -------
     pd.Series
-        Series with observation datetime as index and filename as values.
+        Index: target dates. Values: ``'DD/filename.npy'``, tag included.
+        Empty Series with a DatetimeIndex if the directory does not exist.
     """
-    if not os.path.isdir(path_to_raw_files):
-        raw_files = []
-    else:
-        raw_files = sorted(os.listdir(path_to_raw_files))
+    channel_str = channel.split('_')[1] if 'aia' in channel else channel
 
-    raw_file_dates = []
-    raw_file_names = []
-    for file in raw_files:
-        if file.endswith('.fits'):
-            file_date, _, _ = read_file_name(file)
-            raw_file_dates.append(file_date)
-            raw_file_names.append(file)
+    file_dates = []
+    file_names = []
 
-    dates_index = pd.DatetimeIndex(raw_file_dates)
-    # Keep only the first file for each observation time
-    unique_mask = ~dates_index.duplicated(keep='first')
+    if os.path.isdir(path_to_preprocessed_files):
+        for day_name in sorted(os.listdir(path_to_preprocessed_files)):
+            day_path = path_to_preprocessed_files / day_name
+            if not day_path.is_dir():
+                continue
+
+            for file in sorted(os.listdir(day_path)):
+                if not file.endswith('.npy'):
+                    continue
+                if file[:len(channel_str)] != channel_str:
+                    continue
+
+                file_date, _, _, _ = read_file_name(file, preprocessed=True)
+                file_dates.append(file_date)
+                # Keep the day folder so 'path / value' resolves in the
+                # day-wise tree.
+                file_names.append(f'{day_name}/{file}')
+
+    index = pd.DatetimeIndex(file_dates)
+    if len(index) == 0:
+        return pd.Series(dtype='object', index=pd.DatetimeIndex([]))
+
+    # One file per target date. If a lev1 and a quicklook file both exist for
+    # the same hour, keep the first in sorted order ('_lev1' sorts before
+    # '_ql') and say so rather than failing silently.
+    duplicated = index.duplicated(keep='first')
+    if duplicated.any():
+        clashes = sorted(set(index[duplicated]))
+        print(
+            f'  WARNING: {len(clashes)} date(s) have more than one preprocessed '
+            f'file in {path_to_preprocessed_files}; keeping the first of each. '
+            f'First clash: {clashes[0]}'
+        )
+
     return pd.Series(
-        pd.Index(raw_file_names)[unique_mask],
-        index=dates_index[unique_mask],
-    )
+        pd.Index(file_names)[~duplicated],
+        index=index[~duplicated],
+    ).sort_index()
 
+
+def load_existing_raw_files(path_to_raw_files: Path) -> pd.Series:
+    """
+    Index the raw FITS files that exist for one month, keyed by observation date.
+
+    Walks the ``DD/`` subdirectories beneath a month-level directory, mirroring
+    the day-wise layout the downloader writes to. Counterpart to
+    :func:`load_existing_preprocessed_files`.
+
+    Parameters
+    ----------
+    path_to_raw_files : Path
+        Month-level directory, e.g. ``.../AIA/171/2026/07``.
+
+    Returns
+    -------
+    pd.Series
+        Index: observation datetime. Values: ``'DD/filename.fits'``, so that
+        ``path_to_raw_files / value`` resolves correctly.
+        Empty Series with a DatetimeIndex if the directory does not exist.
+    """
+    file_dates = []
+    file_names = []
+
+    if os.path.isdir(path_to_raw_files):
+        for day_name in sorted(os.listdir(path_to_raw_files)):
+            day_path = path_to_raw_files / day_name
+            if not day_path.is_dir():
+                continue
+
+            for file in sorted(os.listdir(day_path)):
+                if not file.endswith('.fits'):
+                    continue
+
+                file_date, _, _, _ = read_file_name(file)
+                file_dates.append(file_date)
+                file_names.append(f'{day_name}/{file}')
+
+    index = pd.DatetimeIndex(file_dates)
+    if len(index) == 0:
+        return pd.Series(dtype='object', index=pd.DatetimeIndex([]))
+
+    # Keep only the first file for each observation time
+    duplicated = index.duplicated(keep='first')
+    return pd.Series(
+        pd.Index(file_names)[~duplicated],
+        index=index[~duplicated],
+    ).sort_index()
+
+def keep_hourly(raw_files):
+    """Keep one frame per hour — the one nearest :00 — preserving its true obstime."""
+    if len(raw_files) == 0:
+        return raw_files
+    idx = raw_files.index
+    nearest_hour = idx.round('h')
+    order = np.argsort(np.abs((idx - nearest_hour).total_seconds()))   # ← fix
+    seen, keep = set(), []
+    for i in order:
+        h = nearest_hour[i]
+        if h not in seen:
+            seen.add(h); keep.append(idx[i])
+    return raw_files.loc[sorted(keep)]
+
+def find_available_months(path_to_channel: Path) -> list:
+    """
+    List the months that contain data beneath a channel directory.
+
+    Used by the cropper's backfill mode, which processes everything present
+    on disk rather than the date range in the configuration.
+
+    Parameters
+    ----------
+    path_to_channel : Path
+        Channel-level directory, e.g. ``.../uncropped/aia_171``.
+
+    Returns
+    -------
+    list of datetime
+        First-of-month datetimes, ascending. Empty if the directory does not
+        exist or holds no ``YYYY/MM`` subdirectories.
+    """
+    months = []
+
+    if not os.path.isdir(path_to_channel):
+        return months
+
+    for year_name in sorted(os.listdir(path_to_channel)):
+        year_path = path_to_channel / year_name
+        if not year_path.is_dir() or not year_name.isdigit():
+            continue
+
+        for month_name in sorted(os.listdir(year_path)):
+            month_path = year_path / month_name
+            if not month_path.is_dir() or not month_name.isdigit():
+                continue
+
+            months.append(datetime(int(year_name), int(month_name), 1))
+
+    return sorted(months)
 
 def load_calibration_data(
     path_to_config: Path,
@@ -283,12 +436,24 @@ def load_calibration_data(
     if month is not None:
         print(f'Loading pointing table for {month.strftime("%Y%m")}.')
         pointing_table_path = path_to_config / f'pointing_table_{month.strftime("%Y%m")}.pickle'
-        try:
-            with open(pointing_table_path, 'rb') as f:
-                pointing_table = pickle.load(f)
-        except Exception:
-            print('Did not find saved pointing table. Downloading it.')
-            # Download ±1 month window to cover the full month
+        pointing_table = None
+        if pointing_table_path.exists():
+            try:
+                with open(pointing_table_path, 'rb') as f:
+                    pointing_table = pickle.load(f)
+                # A cached table whose coverage ends within ~7 days of now may
+                # still be growing upstream (JSOC pointing publishes ~1 day
+                # behind). Re-fetch so recent frames get their pointing;
+                # finalised older months load straight from cache.
+                last_stop = pd.Timestamp(str(pointing_table['T_STOP'].max())).tz_localize(None)
+                now = pd.Timestamp.now('UTC').tz_localize(None)
+                if (now - last_stop) < pd.Timedelta(days=7):
+                    print('Cached pointing table is recent; re-fetching for new records.')
+                    pointing_table = None
+            except Exception:
+                pointing_table = None
+        if pointing_table is None:
+            print('Downloading pointing table.')
             time_range = (
                 Time(month - timedelta(days=1)),
                 Time(month + timedelta(days=32)),
@@ -305,6 +470,7 @@ def load_calibration_data(
 def check_file_quality(
     files: List[str],
     path_to_downloaded: Path,
+    source='lev1'
 ) -> Tuple[List[datetime], List[datetime]]:
     """
     Assess each FITS file and separate good from bad observations.
@@ -318,7 +484,7 @@ def check_file_quality(
         Filenames to check, in priority order.
     path_to_downloaded : Path
         Directory containing the FITS files.
-
+source='lev1'
     Returns
     -------
     Tuple[List[datetime], List[datetime]]
@@ -332,7 +498,7 @@ def check_file_quality(
         if not file.endswith('.fits'):
             continue
 
-        file_date, _, _ = read_file_name(file)
+        file_date, _, _, _ = read_file_name(file)
         fits_file = path_to_downloaded / file
 
         try:
@@ -343,9 +509,10 @@ def check_file_quality(
 
         if reading_success:
             full_disk = contains_full_disk(smap)
-            good_quality = smap.meta['QUALITY'] == 0
+            good_quality = quality_ok(smap.meta['QUALITY'], source)
+            good_wcs = wcs_is_usable(smap.meta)
 
-            if full_disk and good_quality:
+            if full_disk and good_quality and good_wcs:
                 good_dates.append(file_date)
                 return good_dates, bad_dates  # First good file found; stop
             else:
@@ -391,11 +558,24 @@ def read_file_name(
             date_str = file.split('.pickle')[0][4:]
         elif '.npy' in file:
             date_str = file.split('.npy')[0][4:]
+        for suffix in ('_lev1', '_ql'):
+            date_str = date_str.replace(suffix, '')
         file_date = datetime.strptime(date_str, '%Y-%m-%d_%H:%M')
 
     else:
-        product = file[:3]
+        file = file.split('/')[-1]
+        # --- Quicklook format ---
+        # aia_quicklook.0171.20260318_154800.fits
+        if file.startswith('aia_quicklook'):
+            product = 'aia'
+            parts = file.split('.')
+            channel = str(int(parts[1]))
+            datetime_str = parts[2]
+            file_date = datetime.strptime(datetime_str, '%Y%m%d_%H%M%S')
+            return file_date, product, channel, 'quicklook'
 
+        # --- JSOC formats (existing) ---
+        product = file[:3]
         if product == 'hmi':
             channel = ''
             date_str = file.split('720s.')[1][:8]
@@ -429,7 +609,7 @@ def read_file_name(
                     time_str = ''.join(time_list)
                 file_date = datetime.strptime(date_str + '_' + time_str, '%Y_%m_%d_%H_%M_%S')
 
-    return file_date, product, channel
+    return file_date, product, channel, 'lev1'
 
 
 def check_completeness_of_preprocessed_images(
@@ -437,6 +617,9 @@ def check_completeness_of_preprocessed_images(
     current_month: datetime,
     path_to_preprocessed_files: Path,
     channel: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    latest_raw: Optional[datetime] = None,
 ) -> Tuple[bool, List[datetime]]:
     """
     Check whether all target dates for a month have been preprocessed.
@@ -463,7 +646,7 @@ def check_completeness_of_preprocessed_images(
         dates that are missing but not explained by ``files_to_exclude``.
     """
     missing_preprocessed_dates, _ = find_missing_preprocessed_dates(
-        current_month, path_to_preprocessed_files, channel, overwrite_existing=False
+        current_month, path_to_preprocessed_files, channel, overwrite_existing=False,end_date=end_date, latest_raw=latest_raw, start_date=start_date,
     )
 
     dates_to_check = []
@@ -491,6 +674,7 @@ def find_substitute_file(
     missing_date: datetime,
     existing_raw_files: pd.Series,
     path_to_raw_files: Path,
+    source='lev1',
 ) -> Tuple[datetime, Optional[str], bool, bool]:
     """
     Find the best available substitute FITS file for a missing target date.
@@ -533,7 +717,7 @@ def find_substitute_file(
         sort_index = np.argsort(time_difference)
         files_to_check = files_to_check.iloc[sort_index]
 
-        good_dates, _ = check_file_quality(list(files_to_check), path_to_raw_files)
+        good_dates, _ = check_file_quality(list(files_to_check), path_to_raw_files, source)
 
         if len(good_dates) > 0:
             # Select the temporally closest good candidate
@@ -552,6 +736,7 @@ def find_files_to_preprocess(
     missing_preprocessed_dates: pd.DatetimeIndex,
     existing_raw_files: pd.Series,
     path_to_raw_files: Path,
+    source='lev1',
 ) -> Tuple[pd.Series, pd.DataFrame]:
     """
     Match missing target dates to the best available raw substitute files.
@@ -582,7 +767,7 @@ def find_files_to_preprocess(
     print(f'Number of available CPUs: {n_cpus}')
 
     results = Parallel(n_jobs=n_cpus // 2)(
-        delayed(find_substitute_file)(date, existing_raw_files, path_to_raw_files)
+        delayed(find_substitute_file)(date, existing_raw_files, path_to_raw_files, source)
         for date in missing_preprocessed_dates
     )
 
@@ -613,6 +798,7 @@ def save_preprocessed_output(
     target_date: datetime,
     image: np.ndarray,
     metadata: dict,
+    source: str = 'lev1',
 ) -> None:
     """
     Save a preprocessed image array and its metadata to disk.
@@ -630,11 +816,16 @@ def save_preprocessed_output(
     metadata : dict
         Image metadata (saved as a pickle alongside the array).
     """
+    tag = 'ql' if source == 'quicklook' else 'lev1'
     date_str = target_date.strftime('%Y-%m-%d_%H:%M')
     base_name = f'{channel}_{date_str}'
 
-    np.save(path_output / f'{base_name}.npy', image)
-    with open(path_output / f'{base_name}_meta.pickle', 'wb') as f:
+    # Write into day subfolder for day-wise output layout
+    day_path = path_output / f'{target_date.day:02d}'
+    day_path.mkdir(parents=True, exist_ok=True)
+
+    np.save(day_path / f'{base_name}.npy', image)
+    with open(day_path / f'{base_name}_meta.pickle', 'wb') as f:
         pickle.dump(metadata, f)
 
     print(f'Saved {base_name}.npy')

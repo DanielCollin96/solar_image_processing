@@ -16,6 +16,7 @@ from solar_image_processing.utils.helper_functions import (
     load_calibration_data,
     find_files_to_preprocess,
     check_completeness_of_preprocessed_images,
+    keep_hourly,
 )
 
 
@@ -33,14 +34,21 @@ class SolarImagePreprocessor:
         Full pipeline configuration object.
     """
 
-    def __init__(self, config: PipelineConfig) -> None:
+        # source -> (raw path key, output path key, data product used internally)
+    _SOURCES = {
+        'jsoc': ('unprocessed', 'preprocessed', 'lev1'),
+        'sidc': ('unprocessed_realtime', 'preprocessed_realtime', 'quicklook'),
+    }
+
+    def __init__(self, config, source, start_date, end_date):
+        if source not in self._SOURCES:
+            raise ValueError(f"Unknown source '{source}'. Expected one of {sorted(self._SOURCES)}.")
+        self.raw_key, self.out_key, self.source = self._SOURCES[source]
         self.channels = config.channels
         self.paths = config.paths
-        self.start_date = config.start_date
-        self.end_date = config.end_date
         self.config = config.preprocessing_config
-
-        # Ensure output directories exist before processing starts
+        self.start_date = start_date
+        self.end_date = end_date
         self._create_output_directories()
 
     def run(self) -> None:
@@ -58,7 +66,7 @@ class SolarImagePreprocessor:
         """
         Create the year/month directory tree for preprocessed output.
         """
-        preprocessed_path = Path(self.paths['preprocessed'])
+        preprocessed_path = Path(self.paths[self.out_key])
         preprocessed_path.mkdir(parents=True, exist_ok=True)
 
         for channel in self.channels:
@@ -86,11 +94,13 @@ class SolarImagePreprocessor:
         """
         # Raw FITS files are stored in instrument-specific subdirectories
         if channel[:3] == 'aia':
-            path_raw = self.paths['unprocessed'] / 'AIA' / channel[-3:]
+            if self.source == 'quicklook':
+                path_raw = self.paths[self.raw_key] / 'AIA' / channel[-3:]   # ← confirm this subpath vs your tree
+            else:
+                path_raw = self.paths[self.raw_key] / 'AIA' / channel[-3:]
         elif channel[:3] == 'hmi':
-            path_raw = self.paths['unprocessed'] / 'HMI' / 'magnetogram'
-
-        path_preprocessed = Path(self.paths['preprocessed']) / channel
+            path_raw = self.paths[self.raw_key] / 'HMI' / 'magnetogram'
+        path_preprocessed = Path(self.paths[self.out_key]) / channel
         current_month = datetime(self.start_date.year, self.start_date.month, 1)
         dates_to_check = []
 
@@ -137,27 +147,37 @@ class SolarImagePreprocessor:
         path_output = path_preprocessed / month.strftime('%Y/%m')
 
         existing_raw_files = load_existing_raw_files(path_raw_month)
-        missing_dates, _ = find_missing_preprocessed_dates(
-            month, path_output, channel, self.config['overwrite_existing']
+        if self.source == 'quicklook':
+            existing_raw_files = keep_hourly(existing_raw_files)
+        latest_raw = existing_raw_files.index.max() if len(existing_raw_files) else None
+        all_missing, window_hours = find_missing_preprocessed_dates(
+            month, path_output, channel, self.config['overwrite_existing'],
+            end_date=self.end_date, latest_raw=latest_raw, start_date=self.start_date,
         )
 
-        # Optionally exclude dates that previously failed preprocessing
-        files_to_exclude = self._load_exclusion_list(path_output)
-        if self.config['load_preprocessing_fails'] and not files_to_exclude.empty:
-            missing_dates = missing_dates.difference(files_to_exclude.index)
+        fails_before = self._read_fails(path_output)
+        missing_dates = all_missing
+        if self.config['load_preprocessing_fails'] and not fails_before.empty:
+            missing_dates = all_missing.difference(fails_before.index)
 
         if len(missing_dates) > 0:
-            files_to_preprocess, new_exclusions = find_files_to_preprocess(
-                missing_dates, existing_raw_files, path_raw_month
+            files_to_preprocess, new_fails = find_files_to_preprocess(
+                missing_dates, existing_raw_files, path_raw_month, self.source
             )
-
-            # Merge with any previous exclusions before saving
-            if not files_to_exclude.empty:
-                new_exclusions = pd.concat([files_to_exclude, new_exclusions])
-            new_exclusions.to_csv(path_output / 'preprocessing_fails.csv')
         else:
             files_to_preprocess = pd.Series(dtype=object)
-            new_exclusions = files_to_exclude
+            new_fails = self._empty_fails()
+
+        # Keep entries outside the window (or deliberately skipped), replace the
+        # rest with this run's result, drop hours that now have output.
+        outside_window = ~fails_before.index.isin(window_hours)
+        skipped = fails_before.index.isin(all_missing) & ~fails_before.index.isin(missing_dates)
+        fails = pd.concat([fails_before.loc[outside_window | skipped], new_fails]).sort_index()
+
+        fails_file = path_output / 'preprocessing_fails.csv'
+        if len(fails) > 0 or fails_file.exists():
+            path_output.mkdir(parents=True, exist_ok=True)
+            fails.to_csv(fails_file)
 
         if len(files_to_preprocess) > 0:
             self._run_parallel_preprocessing(
@@ -165,39 +185,24 @@ class SolarImagePreprocessor:
             )
 
         _, dates_to_check = check_completeness_of_preprocessed_images(
-            new_exclusions, month, path_output, channel
+            fails, month, path_output, channel,
+            start_date=self.start_date, end_date=self.end_date, latest_raw=latest_raw,
         )
-
         return dates_to_check
 
-    def _load_exclusion_list(self, path_output: Path) -> pd.DataFrame:
-        """
-        Load the CSV of previously failed preprocessing dates.
+    @staticmethod
+    def _empty_fails():
+        return pd.DataFrame(columns=['bad', 'missing_raw'], index=pd.DatetimeIndex([]))
 
-        Returns an empty DataFrame if ``load_preprocessing_fails`` is
-        disabled in the configuration or if no file exists yet.
-
-        Parameters
-        ----------
-        path_output : Path
-            Directory that may contain ``preprocessing_fails.csv``.
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with columns ``['bad', 'missing_raw']``.
-        """
-        if not self.config['load_preprocessing_fails']:
-            return pd.DataFrame(columns=['bad', 'missing_raw'])
-
+    def _read_fails(self, path_output):
+        """Always read, so entries outside the window survive the rewrite."""
         try:
-            return pd.read_csv(
-                path_output / 'preprocessing_fails.csv',
-                index_col=0,
-                parse_dates=[0],
-            )
-        except FileNotFoundError:
-            return pd.DataFrame(columns=['bad', 'missing_raw'])
+            fails = pd.read_csv(path_output / 'preprocessing_fails.csv',
+                                index_col=0, parse_dates=[0])
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            return self._empty_fails()
+        fails.index = pd.DatetimeIndex(fails.index)
+        return fails
 
     def _run_parallel_preprocessing(
         self,
@@ -239,10 +244,11 @@ class SolarImagePreprocessor:
                 for file in unique_files
             )
         elif channel[:3] == 'aia':
-            # PSF, degradation correction, and pointing tables are month-specific
-            psf, correction_table, pointing_table = load_calibration_data(
-                self.paths['instrument_data'], channel[-3:], month
-            )
+            if self.source == 'quicklook':
+                psf, correction_table, _ = load_calibration_data(self.paths['instrument_data'], channel[-3:], month=None)
+                pointing_table = None
+            else:
+                psf, correction_table, pointing_table = load_calibration_data(self.paths['instrument_data'], channel[-3:], month)
             preprocessor = AIAPreprocessor(pointing_table, psf, correction_table, self.config)
             Parallel(n_jobs=n_jobs)(
                 delayed(preprocessor.process_file)(

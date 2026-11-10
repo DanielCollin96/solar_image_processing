@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Union
+from typing import Optional, Tuple, Union
 
 import yaml
 
@@ -113,7 +113,31 @@ class PipelineConfig:
             f"Cannot parse date string '{date_str}'. "
             "Supported formats: 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS'."
         )
+        #: Window used by routine (cron) runs when no other range is given.
+    DEFAULT_WINDOW_DAYS = 14
 
+    def resolve_window(self, days=None, start=None, end=None, use_all=False):
+        """Turn --days / --start --end / --all into a (start, end) window."""
+        if (start is None) != (end is None):
+            raise ValueError('--start and --end must be given together.')
+        if sum([use_all, start is not None, days is not None]) > 1:
+            raise ValueError('Use only one of --all, --start/--end or --days.')
+
+        if use_all:
+            return self.start_date, self.end_date
+
+        if start is not None:
+            start_dt = self._parse_date(start)
+            end_dt = self._parse_date(end)
+            if len(end.strip()) == 10:              # date only: include the whole day
+                end_dt += timedelta(hours=23)
+            if end_dt < start_dt:
+                raise ValueError('--end is before --start.')
+            return start_dt, end_dt
+
+        end_dt = datetime.utcnow()
+        window_days = self.DEFAULT_WINDOW_DAYS if days is None else days
+        return end_dt - timedelta(days=window_days), end_dt
     def _create_paths(self) -> None:
         """
         Resolve all path entries relative to ``base_dir`` and create them.

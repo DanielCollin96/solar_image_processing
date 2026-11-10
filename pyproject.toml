@@ -15,6 +15,9 @@ dependencies = [
     "joblib>=1.5.3",
     "cupy-cuda12x>=14.0.1",
     "pyyaml",
+    "jupyter>=1.1.1",
+    "astropy-iers-data>=0.2026.3.9.0.47.45",
+    "beautifulsoup4>=4.14.3",
 ]
 
 [project.optional-dependencies]
