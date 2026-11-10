@@ -308,7 +308,7 @@ This work is released under [MIT License](https://github.com/DanielCollin96/sola
 
 ## References
 
-- Publication (please cite): [Collin et al., (2026). AGU Advances.](https://doi.org/10.1029/2026AV002524)
+- Publication (please cite): [Collin et al., (2026). AGU Advances, 7, e2026AV002524.](https://doi.org/10.1029/2026AV002524)
 - Point-spread functions: [1] [Hofmeister et al., (2025). ApJS, 278(1), 8](https://doi.org/10.3847/1538-4365/adbaed); [2] Dataset: [Hofmeister (2024)](https://doi.org/10.7910/DVN/DYT4ZL); 
 - Deconvolution: [3] [Hofmeister (2024). Sol Phys 299, 77](https://doi.org/10.1007/s11207-024-02321-y)
 - SDO Mission: <https://sdo.gsfc.nasa.gov/>
