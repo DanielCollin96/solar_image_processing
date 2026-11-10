@@ -180,8 +180,8 @@ All scripts read configuration from `configs/pipeline_config.yaml` (resolved rel
 ### 1. Download
 
 ```bash
-uv run python scripts/download_solar_images.py --source jsoc
-uv run python scripts/download_solar_images.py --source sidc
+uv run scripts/download_solar_images.py --source jsoc
+uv run scripts/download_solar_images.py --source sidc
 ```
 
 Downloads images for all channels listed in `channels`. JSOC (lev1) is published roughly a week behind real time and downloaded at an hourly cadence. SIDC (quicklook, level 1.5) is downloaded at a 30-minute cadence (two files per hour).
@@ -192,14 +192,14 @@ Downloads images for all channels listed in `channels`. JSOC (lev1) is published
 
 ```bash
 # JSOC lev1 — recent window (default 14 days)
-uv run python scripts/preprocess_solar_images.py --source jsoc
+uv run scripts/preprocess_solar_images.py --source jsoc
 
 # SIDC quicklook — recent window
-uv run python scripts/preprocess_solar_images.py --source sidc
+uv run scripts/preprocess_solar_images.py --source sidc
 
 # bound an explicit range, or process everything available
-uv run python scripts/preprocess_solar_images.py --source jsoc --start 2026-03-01 --end 2026-03-31
-uv run python scripts/preprocess_solar_images.py --source jsoc --all
+uv run scripts/preprocess_solar_images.py --source jsoc --start 2026-03-01 --end 2026-03-31
+uv run scripts/preprocess_solar_images.py --source jsoc --all
 ```
 
 Common flags: `--days N` (rolling recent window, default 14), `--start/--end` (explicit date range), `--all` (ignore the window, process the full configured range), `--config PATH` (use an alternate config).
@@ -233,8 +233,8 @@ Calibration data (PSF, degradation correction, pointing tables) is loaded from `
 ### 3. Crop
 
 ```bash
-uv run python scripts/crop_solar_images.py --source jsoc --start 2024-06-01 --end 2024-06-30
-uv run python scripts/crop_solar_images.py --source sidc --start 2026-01-01 --end 2026-04-30
+uv run scripts/crop_solar_images.py --source jsoc --start 2024-06-01 --end 2024-06-30
+uv run scripts/crop_solar_images.py --source sidc --start 2026-01-01 --end 2026-04-30
 ```
 
 Reads preprocessed `.npy` files, downsamples them using block-sum reduction (which preserves total flux), crops, and optionally resizes. Two crop modes are available via `crop_mode` in the config: `square` (symmetric pixel crop centred on the image, then an optional bicubic resize) and `disk` (crop to the solar disk boundary using the disk radius in the metadata pickle).
