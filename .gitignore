@@ -6,3 +6,4 @@ data/
 logs/
 cleanup/
 unused_code/
+configs/pipeline_config.local.yaml
