@@ -34,20 +34,10 @@ channels:
   - aia_193
   - aia_211
 
-# Multi-email parallel download workers.
-# For now there's just one worker covering all three AIA channels.
-# Add more workers later if you re-introduce the second JSOC email.
-download_workers:
-  - email: chaurasia@uni-potsdam.de
-    channels:
-      - aia_171
-      - aia_193
-      - aia_211
-
 # Options for downloading
 download:
-  # Email registered with JSOC for export requests
-  email: chaurasia@uni-potsdam.de
+  # Your JSOC-registered email (see README, "Register with JSOC")
+  email: your@email.com
   # Factor by which the JSOC server rebins images before they are downloaded.
   #   rebin_factor: 1   -> full resolution, 4096x4096 pixels
   #   rebin_factor: 4   -> 1024x1024 pixels

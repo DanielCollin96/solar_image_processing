@@ -75,11 +75,13 @@ uv sync
 ### 3. Running Scripts
 
 You do not need to activate the virtual environment manually. 
-Use `uv run` to execute scripts:
+Run scripts with `uv run` from the project root:
 
 ```bash
-uv run <script>.py
+uv run scripts/<script>.py [options]
 ```
+
+Add `--help` to any script to list its options.
 
 
 ### 4. Register with JSOC
@@ -175,16 +177,33 @@ cropping:
 
 ## Usage
 
-All scripts read configuration from `configs/pipeline_config.yaml` (resolved relative to the package, so they can be run from the project root). Each stage takes a required `--source {jsoc, sidc}` selecting the data source.
+All scripts read configuration from `configs/pipeline_config.yaml` by default; pass `--config PATH` to use another file. Every stage takes a required `--source jsoc` or `--source sidc` selecting the data source, and processes one source per run.
 
 ### 1. Download
 
 ```bash
+# resume from the latest date already on disk
 uv run scripts/download_solar_images.py --source jsoc
 uv run scripts/download_solar_images.py --source sidc
+
+# preview what would be requested, or report what is already on disk
+uv run scripts/download_solar_images.py --source jsoc --dry-run
+uv run scripts/download_solar_images.py --source jsoc --coverage
+
+# backfill, ignoring what is on disk
+uv run scripts/download_solar_images.py --source sidc --backfill --backfill-start 2026-01
 ```
 
-Downloads images for all channels listed in `channels`. JSOC (lev1) is published roughly a week behind real time and downloaded at an hourly cadence. SIDC (quicklook, level 1.5) is downloaded at a 30-minute cadence (two files per hour).
+Flags:
+
+- `--source {jsoc,sidc}` (required): data source.
+- `--backfill`: ignore what is on disk. For SIDC, the server is crawled month by month from `--backfill-start`. For JSOC, every day is re-requested from `start_date` in the config, i.e. the full archive.
+- `--backfill-start YYYY-MM`: first month of a SIDC backfill (default `2026-01`).
+- `--dry-run`: list the dates that would be requested, then exit without downloading.
+- `--coverage`: report the latest downloaded date per channel, then exit.
+- `--config PATH`: use an alternate config.
+
+Normal runs resume from the latest date already on disk, so a nightly run only fetches new data. Downloads images for all channels listed in `channels`. JSOC (lev1) is published roughly a week behind real time and downloaded at an hourly cadence. SIDC (quicklook, level 1.5) is downloaded at a 30-minute cadence (two files per hour).
 
 **Output:** raw FITS files and per-request metadata pickles under `data/unprocessed_images/SDO/` (JSOC) and `data/unprocessed_images_realtime/SDO/` (SIDC), organised day-wise as `.../AIA/{171|193|211}/YYYY/MM/DD/`.
 
@@ -202,7 +221,15 @@ uv run scripts/preprocess_solar_images.py --source jsoc --start 2026-03-01 --end
 uv run scripts/preprocess_solar_images.py --source jsoc --all
 ```
 
-Common flags: `--days N` (rolling recent window, default 14), `--start/--end` (explicit date range), `--all` (ignore the window, process the full configured range), `--config PATH` (use an alternate config).
+Flags (shared with the crop script):
+
+- `--source {jsoc,sidc}` (required): data source.
+- `--days N`: process the last N days up to now. This is the default, with N = 14.
+- `--start` / `--end`: explicit date range, `YYYY-MM-DD` or `"YYYY-MM-DD HH:MM:SS"`. Both must be given; an end date without a time includes that whole day.
+- `--all`: process the full range from `start_date` to `end_date` in the config.
+- `--config PATH`: use an alternate config.
+
+Use only one of `--days`, `--start/--end` or `--all`.
 
 Missing hourly observations are filled using the temporally closest available raw file within a ±24.5 h window; differential rotation is applied when the time gap exceeds 6 minutes (if enabled).
 
@@ -233,9 +260,16 @@ Calibration data (PSF, degradation correction, pointing tables) is loaded from `
 ### 3. Crop
 
 ```bash
+# recent window (default 14 days)
+uv run scripts/crop_solar_images.py --source jsoc
+uv run scripts/crop_solar_images.py --source sidc
+
+# explicit range
 uv run scripts/crop_solar_images.py --source jsoc --start 2024-06-01 --end 2024-06-30
 uv run scripts/crop_solar_images.py --source sidc --start 2026-01-01 --end 2026-04-30
 ```
+
+Takes the same flags as the preprocessing script (`--source`, `--days`, `--start/--end`, `--all`, `--config`).
 
 Reads preprocessed `.npy` files, downsamples them using block-sum reduction (which preserves total flux), crops, and optionally resizes. Two crop modes are available via `crop_mode` in the config: `square` (symmetric pixel crop centred on the image, then an optional bicubic resize) and `disk` (crop to the solar disk boundary using the disk radius in the metadata pickle).
 
