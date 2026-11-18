@@ -1,6 +1,6 @@
 #!/bin/bash
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
-UV=/home/ravito/.local/bin/uv
+UV="${UV:-$(command -v uv || echo "$HOME/.local/bin/uv")}"
 LOG="logs/cron_jsoc_$(date +%F).log"
 {
   echo "=== JSOC pipeline start $(date) ==="
